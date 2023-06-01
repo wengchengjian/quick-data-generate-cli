@@ -13,7 +13,9 @@ rand = "0.8.5"
 chrono = "0.4.26"
 time = "0.3.21"
 structopt = "0.3"
-
+openssl = { version = "0.10", features = ["vendored"] }
+[build-dependencies]
+cc = { version = "1.0", features = ["parallel"] }
 [source.crates-io]
 registry = "https://github.com/rust-lang/crates.io-index"
 replace-with = 'ustc'

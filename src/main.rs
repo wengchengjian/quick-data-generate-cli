@@ -1,3 +1,9 @@
+use ::time::OffsetDateTime;
+use chrono::{DateTime, Local, Utc};
+use cli::Cli;
+use clickhouse::{Client, Row};
+use rand::{rngs::ThreadRng, Rng};
+use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
     env,
@@ -8,15 +14,8 @@ use std::{
     time::{self, Duration, SystemTime, UNIX_EPOCH},
     vec,
 };
-
-use ::time::OffsetDateTime;
-use chrono::{DateTime, Local, Utc};
-use cli::Cli;
-use clickhouse::{Client, Row};
-use rand::{rngs::ThreadRng, Rng};
-use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
-use tokio::{process::Command, signal};
+use tokio::{process::Command, runtime::Builder, signal};
 
 static TOTAL: AtomicU64 = AtomicU64::new(0);
 static START: AtomicU64 = AtomicU64::new(0);
@@ -24,40 +23,53 @@ static COMMIT: AtomicU64 = AtomicU64::new(0);
 
 pub mod cli;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    // 初始化日志
+fn main() -> Result<(), Box<dyn Error>> {
+    let num_threads = num_cpus::get();
+
     let cli = Cli::from_args();
-
-    let print = cli.print.unwrap_or(5);
-    let batch = cli.batch.unwrap_or(50000);
-    let host = cli.host.unwrap_or("192.168.180.217".to_string());
-    let port = cli.port.unwrap_or(8123);
-    let user = cli.user.unwrap_or("default".to_string());
-    let password = cli.password.unwrap_or("!default@123".to_string());
-    println!("pid:{},process starting... ", std::process::id());
-
-    // debug!(
-    //     "host: {}, port: {}, user: {}, password: {}, print: {}, batch: {}",
-    //     host, port, user, password, print, batch
-    // );
-    let url = format!("http://{}:{}", host, port);
-    let client = Client::default()
-        .with_url(url)
-        .with_user(user)
-        .with_password(password)
-        .with_database("ws_dwd");
-
-    startStatics(print).await?;
-
-    tokio::select! {
-        _ = startOutput(client, batch) => {
-            println!("\nckd exiting...");
-        }
-        _ = signal::ctrl_c() => {
-            println!("\nctrl-c received, exiting...");
-        }
+    let threats = cli.threats.unwrap_or(num_threads);
+    if threats > num_threads {
+        println!("threats must be less than or equal to the number of cores");
+        return Ok(());
     }
+    let rt = Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(threats)
+        .build()
+        .unwrap();
+
+    rt.block_on(async move {
+        let print = cli.print.unwrap_or(5);
+        let batch = cli.batch.unwrap_or(50000);
+        let host = cli.host.unwrap_or("127.0.0.1".to_string());
+        let port = cli.port.unwrap_or(8123);
+        let user = cli.user.unwrap_or("default".to_string());
+        let password = cli.password.unwrap_or("!default@123".to_string());
+        println!("pid:{},process starting... ", std::process::id());
+
+        // debug!(
+        //     "host: {}, port: {}, user: {}, password: {}, print: {}, batch: {}",
+        //     host, port, user, password, print, batch
+        // );
+        let url = format!("http://{}:{}", host, port);
+        let client = Client::default()
+            .with_url(url)
+            .with_user(user)
+            .with_password(password)
+            .with_database("ws_dwd");
+
+        startStatics(print).await.unwrap();
+
+        tokio::select! {
+            _ = startOutput(client, batch) => {
+                println!("\nckd exiting...");
+            }
+            _ = signal::ctrl_c() => {
+                println!("\nctrl-c received, exiting...");
+            }
+        }
+    });
+
     Ok(())
 }
 

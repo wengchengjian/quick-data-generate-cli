@@ -23,4 +23,7 @@ pub struct Cli {
 
     #[structopt(long)]
     pub print: Option<usize>,
+
+    #[structopt(long)]
+    pub threats: Option<usize>,
 }

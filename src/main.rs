@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     env,
     error::Error,
+    io::Write,
     process::Output,
     sync::atomic::{AtomicU64, Ordering},
     time::{self, Duration, SystemTime, UNIX_EPOCH},
@@ -30,7 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let print = cli.print.unwrap_or(5);
     let batch = cli.batch.unwrap_or(50000);
-    let host = cli.host.unwrap_or("127.0.0.1".to_string());
+    let host = cli.host.unwrap_or("192.168.180.217".to_string());
     let port = cli.port.unwrap_or(8123);
     let user = cli.user.unwrap_or("default".to_string());
     let password = cli.password.unwrap_or("!default@123".to_string());
@@ -51,10 +52,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tokio::select! {
         _ = startOutput(client, batch) => {
-            println!("ckd exiting...");
+            println!("\nckd exiting...");
         }
         _ = signal::ctrl_c() => {
-            println!("ctrl-c received, exiting...");
+            println!("\nctrl-c received, exiting...");
         }
     }
     Ok(())
@@ -141,7 +142,6 @@ pub async fn startStatics(print: usize) -> Result<(), Box<dyn Error>> {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(print as u64)).await;
-            tokio::task::yield_now().await;
             let (memory_usage, cpu_percent) = get_system_usage().await;
             let total = TOTAL.load(Ordering::SeqCst);
             if total == 0 {
@@ -153,13 +153,11 @@ pub async fn startStatics(print: usize) -> Result<(), Box<dyn Error>> {
             let time = now - start;
             let tps = total / time;
 
-            println!(
-                "total: {}, commit: {}, tps: {}, memory_usage: {} KB, CPU usage: {:.2}%",
+            print!(
+                "\rTotal: {}, Commit: {}, TPS: {}, Memory Usage: {:.2} KB, Cpu Usage: {:.2}%",
                 total, commit, tps, memory_usage, cpu_percent
             );
-            use tokio::io::{self, AsyncWriteExt};
-
-            tokio::io::stdout().flush().await.unwrap();
+            std::io::stdout().flush().unwrap();
         }
     });
 

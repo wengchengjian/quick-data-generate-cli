@@ -114,6 +114,7 @@ dependencies = [
  "chrono",
  "clickhouse",
  "effective-limits",
+ "lazy_static",
  "num_cpus",
  "rand",
  "serde",

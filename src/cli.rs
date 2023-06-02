@@ -1,5 +1,7 @@
 use structopt::StructOpt;
 
+use crate::output::OutputEnum;
+
 #[derive(Debug, StructOpt)]
 #[structopt(
     name = "ckd",
@@ -8,6 +10,12 @@ use structopt::StructOpt;
 pub struct Cli {
     #[structopt(long)]
     pub host: Option<String>,
+
+    #[structopt(long)]
+    pub database: Option<String>,
+
+    #[structopt(long)]
+    pub table: Option<String>,
 
     #[structopt(long)]
     pub port: Option<u16>,
@@ -22,8 +30,14 @@ pub struct Cli {
     pub batch: Option<usize>,
 
     #[structopt(long)]
+    pub count: Option<usize>,
+
+    #[structopt(long)]
     pub print: Option<usize>,
 
     #[structopt(long)]
     pub threats: Option<usize>,
+
+    #[structopt(long)]
+    pub output: Option<OutputEnum>,
 }

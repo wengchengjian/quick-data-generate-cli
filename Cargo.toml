@@ -11,8 +11,16 @@ tokio = {version = "1.28.0", features = ["full"]}
 serde = { version = "1.0", features = ["derive"] }
 rand = "0.8.5"
 chrono = "0.4.26"
+num_cpus = "1.15.0"
+lazy_static = "1.4.0"
+# tracing = "0.1"
+# tracing-subscriber = "0.3.0"
 time = "0.3.21"
+fake = { version = "2.6", features=['derive']}
+effective-limits = "0.5.5"
 structopt = "0.3"
+async-trait = "0.1.68"
+
 # openssl = { version = "0.10", features = ["vendored"] }
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel"] }

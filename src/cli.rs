@@ -2,10 +2,10 @@ use structopt::StructOpt;
 
 use crate::output::OutputEnum;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, StructOpt, Clone)]
 #[structopt(
     name = "ckd",
-    about = "A command line tool to load data into ClickHouse."
+    about = "A command line tool to load data into Output source."
 )]
 pub struct Cli {
     #[structopt(long)]
@@ -20,24 +20,24 @@ pub struct Cli {
     #[structopt(long)]
     pub port: Option<u16>,
 
-    #[structopt(long)]
+    #[structopt(short, long)]
     pub user: Option<String>,
 
-    #[structopt(long)]
+    #[structopt(short, long)]
     pub password: Option<String>,
 
-    #[structopt(long)]
+    #[structopt(short, long)]
     pub batch: Option<usize>,
 
     #[structopt(long)]
     pub count: Option<usize>,
 
-    #[structopt(long)]
-    pub print: Option<usize>,
+    #[structopt(short, long)]
+    pub interval: Option<usize>,
 
-    #[structopt(long)]
-    pub threats: Option<usize>,
+    #[structopt(short, long)]
+    pub threads: Option<usize>,
 
-    #[structopt(long)]
-    pub output: Option<OutputEnum>,
+    #[structopt(short, long, default_value = "clickhouse")]
+    pub output: OutputEnum,
 }

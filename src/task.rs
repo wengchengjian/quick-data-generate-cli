@@ -1,14 +1,9 @@
 use std::time::Duration;
 
-use clickhouse::{
-    inserter::{self, Inserter},
-    Client,
-};
+use clickhouse::{inserter::Inserter, Client};
 use tokio::sync::mpsc;
 
 use crate::{
-    model::IpSessionRow,
-    output::STATICS,
     shutdown::Shutdown,
     util::{generate_ip, get_current_date},
 };
@@ -45,7 +40,7 @@ impl ClickHouseTask {
         while !self.shutdown.is_shutdown() {
             let mut inserter = self
                 .client
-                .inserter::<IpSessionRow>("dwd_standard_ip_session_all")?
+                .inserter::<Value>("dwd_standard_ip_session_all")?
                 .with_timeouts(Some(Duration::from_secs(5)), Some(Duration::from_secs(20)))
                 .with_max_entries(750_000)
                 .with_period(Some(Duration::from_secs(15)));

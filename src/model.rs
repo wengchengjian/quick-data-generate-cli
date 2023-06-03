@@ -1,40 +1,43 @@
-use clickhouse::Row;
+use std::net::{Ipv4Addr, Ipv6Addr};
+
 use serde::{Deserialize, Serialize};
 
-#[derive(Row, Serialize)]
-struct MyRow {
-    num: u32,
-    row_name: String,
-    time: String,
+#[derive(Clone, Serialize, Debug, Deserialize)]
+pub struct Column {
+    name: String,
+    data_type: ColumnDataType,
+    default: Option<String>,
+    value: Option<String>,
+    is_nullable: bool,
+    is_primary: bool,
+    is_unique: bool,
+    is_auto_increment: bool,
+    is_index: bool,
 }
 
-#[derive(Row, Serialize, Debug, Deserialize)]
-pub struct IpSessionRow {
-    pub src_ip: String,
-    pub dst_ip: String,
-    pub device_id: u64,
-    pub customer_id: u64,
-    pub source_id: String,
-    pub protocol: u32,
-    pub protocol_ip: u32,
-    pub src_port: Vec<u32>,
-    pub dst_port: Vec<u32>,
-    pub send_traffic: u64,
-    pub recv_traffic: u64,
-    pub end_time: u32,
-    pub request_time: u32,
-    pub src_ip_type: String,
-    pub dst_ip_type: String,
-    pub src_inner_network_ip: u8,
-    pub src_country_name: String,
-    pub src_province_name: String,
-    pub src_city_name: String,
-    pub src_ip_longitude_latitude: Vec<f32>,
+#[derive(Clone, Serialize, Debug, Deserialize)]
+pub enum ColumnDataType {
+    String(String),
+    UInt8(u8),
+    UInt16(u16),
+    UInt32(u32),
+    UInt64(u64),
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),
+    Float32(f32),
+    Float64(f64),
+    Date(String),
+    Timestamp(u64),
+    DateTime(String),
+    Enum(String),
+    Array(Vec<ColumnDataType>),
+    Boolean(bool),
+    Ipv4Addr(Ipv4Addr),
+    Ipv6Addr(Ipv6Addr),
+}
 
-    pub dst_inner_network_ip: u8,
-    pub dst_country_name: String,
-    pub dst_province_name: String,
-    pub dst_city_name: String,
-    pub dst_ip_longitude_latitude: Vec<f32>,
-    pub create_time: u32,
+pub struct Row {
+    columns: Vec<Column>,
 }

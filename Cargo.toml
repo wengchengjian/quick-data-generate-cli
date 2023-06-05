@@ -20,7 +20,10 @@ fake = { version = "2.6", features=['derive']}
 effective-limits = "0.5.5"
 structopt = "0.3"
 async-trait = "0.1.68"
-
+serde_json = "1.0.96"
+mysql_async = "0.32.2"
+[dev-dependencies]
+tokio-test = "*"
 # openssl = { version = "0.10", features = ["vendored"] }
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel"] }

@@ -1,25 +1,16 @@
-use std::sync::Arc;
-
 use clickhouse::Client;
-use tokio::sync::{broadcast, mpsc, Semaphore};
 
-use crate::{cli::Cli, shutdown::Shutdown, task::ClickHouseTask};
+use crate::{cli::Cli, task::ClickHouseTask};
 
 impl ClickHouseOutput {
-    pub fn new(
-        cli: Cli,
-
-        concurrency: Arc<Semaphore>,
-
-        notify_shutdown: broadcast::Sender<()>,
-
-        shutdown_complete_tx: mpsc::Sender<()>,
-    ) -> Self {
+    pub fn new(cli: Cli) -> Self {
+        let interval = cli.interval.unwrap_or(5);
         Self {
+            name: "clickhouse".into(),
+            interval,
             args: cli.into(),
-            concurrency,
-            notify_shutdown,
-            shutdown_complete_tx,
+            logger: StaticsLogger::new(interval),
+            tasks: vec![],
         }
     }
 
@@ -55,40 +46,57 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for ClickHouseOutput {
-    fn name(&self) -> String {
-        todo!()
+    fn get_logger(&self) -> &StaticsLogger {
+        return &self.logger;
+    }
+
+    fn set_logger(&mut self, logger: StaticsLogger) {
+        self.logger = logger;
+    }
+
+    fn name(&self) -> &str {
+        return &self.name;
     }
 
     fn interval(&self) -> usize {
-        todo!()
+        return self.interval;
     }
 
-    async fn run(&mut self) -> crate::Result<()> {
-        let client = self.connect();
+    async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
+        Ok(())
+        //        let client = self.connect();
+        //
+        //        let batch = self.args.batch;
+        //        let count = self.args.count;
+        //        let semaphore: Arc<Semaphore> = context.concurrency.clone();
+        //        let task_num = 0;
+        //        loop {
+        //            let permit = semaphore.acquire_owned().await.unwrap();
+        //
+        //            let task_name = format!("{}-task-{}", self.name, task_num);
+        //
+        //            let client = client.clone();
+        //            let mut task = ClickHouseTask::new(task_name, client, batch, count);
+        //            self.tasks.push(task);
+        //            let mut logger = self.logger;
+        //            tokio::spawn(async move {
+        //                if let Err(err) = task.run(&mut logger).await {
+        //                    println!("task run error: {}", err);
+        //                }
+        //
+        //                drop(permit);
+        //            });
+        //        }
+    }
+}
 
-        let batch = self.args.batch;
-        let count = self.args.count;
-
-        loop {
-            let semaphore: Arc<Semaphore> = self.concurrency.clone();
-            let permit = semaphore.acquire_owned().await.unwrap();
-
-            let client = client.clone();
-
-            let shutdown = Shutdown::new(self.notify_shutdown.subscribe());
-            let shutdown_complete_tx = self.shutdown_complete_tx.clone();
-
-            let mut task =
-                ClickHouseTask::new(shutdown, shutdown_complete_tx, client, batch, count);
-
-            tokio::spawn(async move {
-                if let Err(err) = task.run().await {
-                    println!("task run error: {}", err);
-                }
-
-                drop(permit)
-            });
+#[async_trait]
+impl Close for ClickHouseOutput {
+    async fn close(&mut self) -> crate::Result<()> {
+        for task in &mut self.tasks {
+            task.close().await?;
         }
+        Ok(())
     }
 }
 
@@ -111,13 +119,16 @@ pub struct ClickHouseArgs {
     pub count: usize,
 }
 
-#[derive(Debug)]
+use super::{super::log::StaticsLogger, Close, OutputContext};
+
 pub struct ClickHouseOutput {
-    pub concurrency: Arc<Semaphore>,
+    pub logger: StaticsLogger,
 
-    pub notify_shutdown: broadcast::Sender<()>,
+    pub name: String,
 
-    pub shutdown_complete_tx: mpsc::Sender<()>,
+    pub interval: usize,
 
     pub args: ClickHouseArgs,
+
+    pub tasks: Vec<ClickHouseTask>,
 }

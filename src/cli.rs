@@ -36,7 +36,7 @@ pub struct Cli {
     pub interval: Option<usize>,
 
     #[structopt(short, long)]
-    pub threads: Option<usize>,
+    pub concurrency: Option<usize>,
 
     #[structopt(short, long, default_value = "clickhouse")]
     pub output: OutputEnum,

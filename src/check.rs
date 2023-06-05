@@ -52,7 +52,7 @@ pub fn check_interval(cli: &mut super::Cli) {
 pub fn check_thread_num(cli: &mut super::Cli) {
     let mut num_threads = num_cpus::get();
 
-    let mut th = cli.threads;
+    let mut th = cli.concurrency;
     match th {
         Some(val) => {
             if val < MIN_THREAD_SIZE {

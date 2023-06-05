@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::Write,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::Duration,
 };
 
@@ -34,9 +34,28 @@ impl StaticsLogFactory {
         }
     }
 
+    pub fn add_total(&mut self, name: &str, total: usize) {
+        let log = self
+            .logs
+            .entry(name.to_string())
+            .or_insert(StaticsLog::new(name.to_string(), 5));
+
+        log.add_total(total as u64);
+    }
+
+    pub fn add_commit(&mut self, name: &str, commit: usize) {
+        let log = self
+            .logs
+            .entry(name.to_string())
+            .or_insert(StaticsLog::new(name.to_string(), 5));
+
+        log.add_commit(commit as u64);
+    }
+
     /// 注册一个日志任务
     pub fn register(&mut self, log: StaticsLog) {
-        self.logs.entry(log.name).or_insert(log);
+        let key = log.name.clone();
+        self.logs.entry(key).or_insert(log);
     }
 
     /// 注销一个日志任务
@@ -64,11 +83,29 @@ impl StaticsLogFactory {
 pub struct StaticsLogger {
     interval: usize,
     factory: StaticsLogFactory,
+    shutdown: AtomicBool,
 }
 
 impl StaticsLogger {
-    pub fn new(factory: StaticsLogFactory, interval: usize) -> Self {
-        Self { factory, interval }
+    pub fn new(interval: usize) -> Self {
+        Self {
+            factory: StaticsLogFactory::new(),
+            interval,
+            shutdown: AtomicBool::new(false),
+        }
+    }
+
+    pub fn add_total(&mut self, name: &str, total: usize) {
+        self.factory.add_total(name, total)
+    }
+
+    pub fn add_commit(&mut self, name: &str, commit: usize) {
+        self.factory.add_commit(name, commit)
+    }
+
+    pub fn close(&self) -> crate::Result<()> {
+        self.shutdown.store(true, Ordering::SeqCst);
+        Ok(())
     }
 
     pub fn register(&mut self, log: StaticsLog) {
@@ -88,6 +125,9 @@ impl StaticsLogger {
 
     pub async fn log(&self) {
         loop {
+            if self.shutdown.load(Ordering::SeqCst) {
+                return;
+            }
             for log in self.factory.logs.values() {
                 log.print_log().await;
                 println!();

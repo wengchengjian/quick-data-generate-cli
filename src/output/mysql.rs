@@ -1,7 +1,8 @@
-use mysql_async::{prelude::*, Conn, from_row};
+use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicBool, Arc};
+use std::time::Duration;
 use std::vec;
 use tokio::join;
 use tokio::sync::{broadcast, mpsc, Semaphore};
@@ -14,19 +15,16 @@ use crate::task::mysql::MysqlTask;
 
 impl MysqlOutput {
     pub fn new(cli: Cli) -> Self {
-        let interval = cli.interval.unwrap_or(5);
         Self {
-            name: "Mysql".into(),
-            interval: interval,
+            name: "mysql".into(),
             args: cli.into(),
-            logger: StaticsLogger::new(interval),
             tasks: vec![],
             shutdown: AtomicBool::new(false),
         }
     }
 
     pub fn connect(&self) -> crate::Result<Pool> {
-//        let url = "mysql://root:wcj520600@localhost:3306/tests";
+        //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
             "mysql://{}:{}@{}:{}/{}",
             self.args.user, self.args.password, self.args.host, self.args.port, self.args.database
@@ -39,16 +37,6 @@ impl MysqlOutput {
         Ok(pool)
     }
 
-    pub fn get_logger_mut(&mut self) -> &mut StaticsLogger {
-        &mut self.logger
-    }
-    async fn start_log(&mut self, msg_rx: &mut mpsc::Receiver<ChannelStaticsLog>) {
-        loop {
-            let msg = msg_rx.recv().await.unwrap();
-            self.logger.add_total(&msg.name, msg.total);
-            self.logger.add_commit(&msg.name, msg.commit);
-        }
-    }
     /// 根据数据库和表获取字段定义
     pub async fn get_columns_define(
         conn: Conn,
@@ -59,9 +47,15 @@ impl MysqlOutput {
         let mut conn = conn;
         let res = sql
             .with(())
-            .map(&mut conn, |row | {
-
-                let column = from_row::<(String, String,String,Option<String>,Option<String>,Option<String>)>(row);
+            .map(&mut conn, |row| {
+                let column = from_row::<(
+                    String,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                )>(row);
                 let Field = column.0;
                 let Type = column.1;
                 let Null = column.2;
@@ -80,7 +74,7 @@ impl MysqlOutput {
                 return OutputColumn {
                     name: column.Field.clone(),
                     data_type: DataTypeEnum::from_string(column.Type.clone()).unwrap(),
-                }
+                };
             })
             .await?;
         Ok(res)
@@ -107,7 +101,7 @@ impl Into<MysqlArgs> for Cli {
             database: self.database.unwrap_or("tests".to_string()),
 
             table: self.table.unwrap_or("payment".to_string()),
-            batch: self.batch.unwrap_or(5000),
+            batch: self.batch.unwrap_or(1000),
             count: self.count.unwrap_or(0),
         }
     }
@@ -117,18 +111,6 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for MysqlOutput {
-    fn get_logger(&self) -> &StaticsLogger {
-        return &self.logger;
-    }
-
-    fn set_logger(&mut self, logger: StaticsLogger) {
-        self.logger = logger;
-    }
-
-    fn interval(&self) -> usize {
-        return self.interval;
-    }
-
     fn name(&self) -> &str {
         return &self.name;
     }
@@ -144,15 +126,15 @@ impl super::Output for MysqlOutput {
             .expect("获取字段定义失败");
         let (notify_shutdown, _) = broadcast::channel(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
-        let (msg_tx, mut msg_rx) = mpsc::channel::<ChannelStaticsLog>(10);
 
         let batch = self.args.batch;
         let count = self.args.count;
-        let task_num = 0;
+        let mut task_num = 0;
 
         while !self.shutdown.load(Ordering::SeqCst) {
             let permit = context.concurrency.clone().acquire_owned().await.unwrap();
 
+            task_num += 1;
             let task_name = format!("{}-task-{}", self.name, task_num);
             let conn = pool.get_conn().await?;
 
@@ -169,25 +151,14 @@ impl super::Output for MysqlOutput {
                 table,
                 columns,
                 shutdown_complete_tx.clone(),
-                msg_tx.clone(),
                 Shutdown::new(notify_shutdown.subscribe()),
             );
-            let future = tokio::spawn(async move {
+            tokio::spawn(async move {
                 if let Err(err) = task.run().await {
                     println!("task run error: {}", err);
                 }
-
                 drop(permit);
             });
-
-            tokio::select! {
-                _ = future => {
-                    continue;
-                }
-                _ = self.start_log(&mut msg_rx) => {
-                    continue;
-                }
-            }
         }
 
         // When `notify_shutdown` is dropped, all tasks which have `subscribe`d will
@@ -236,11 +207,7 @@ pub struct MysqlArgs {
 use super::{super::log::StaticsLogger, Close, OutputContext};
 
 pub struct MysqlOutput {
-    pub logger: StaticsLogger,
-
     pub name: String,
-
-    pub interval: usize,
 
     pub args: MysqlArgs,
 

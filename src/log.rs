@@ -1,11 +1,15 @@
+use crate::util::{get_current_date, get_system_usage};
 use std::{
     collections::HashMap,
     io::Write,
-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering},
     time::Duration,
 };
+use tokio::sync::Mutex;
 
-use crate::util::{get_current_date, get_system_usage};
+lazy_static! {
+    pub static ref STATICS_LOGGER: Mutex<StaticsLogger> = Mutex::new(StaticsLogger::new(0));
+}
 
 #[derive(Debug)]
 pub struct StaticsLog {
@@ -95,6 +99,29 @@ impl StaticsLogger {
         }
     }
 
+    pub async fn log() {
+        println!("start logging tasks log...");
+        loop {
+            {
+                let logger = STATICS_LOGGER.lock().await;
+                if logger.shutdown.load(Ordering::SeqCst) {
+                    return;
+                }
+                for log in logger.factory.logs.values() {
+                    log.print_log().await;
+                    println!();
+                }
+                let interval = logger.interval;
+                drop(logger);
+                tokio::time::sleep(Duration::from_secs(interval as u64)).await;
+            }
+        }
+    }
+
+    pub fn interval(&mut self, interval: usize) {
+        self.interval = interval;
+    }
+
     pub fn add_total(&mut self, name: &str, total: usize) {
         self.factory.add_total(name, total)
     }
@@ -122,19 +149,18 @@ impl StaticsLogger {
             log.completed = true;
         }
     }
+}
 
-    pub async fn log(&self) {
-        loop {
-            if self.shutdown.load(Ordering::SeqCst) {
-                return;
-            }
-            for log in self.factory.logs.values() {
-                log.print_log().await;
-                println!();
-            }
-            tokio::time::sleep(Duration::from_secs(self.interval as u64)).await;
-        }
+
+
+pub async fn incr_log(name: &str, total: usize, commit: usize) {
+    if let Ok(mut logger) = STATICS_LOGGER.try_lock() {
+        logger.add_total(name, total);
+        logger.add_commit(name, commit);
+    } else {
+        println!("not get logger lock")
     }
+    
 }
 
 impl StaticsLog {

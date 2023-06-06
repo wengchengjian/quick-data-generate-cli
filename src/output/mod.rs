@@ -17,19 +17,8 @@ pub trait Close {
 
 #[async_trait]
 pub trait Output: Send + Close + Sync {
-    fn get_logger(&self) -> &StaticsLogger;
-
-    fn set_logger(&mut self, logger: StaticsLogger);
-
     /// 通用初始化逻辑
-    fn init(&mut self, context: &mut OutputContext) {
-        let mut logger = StaticsLogger::new(self.interval());
-        // 注册一个自身的log任务
-        let log = StaticsLog::new(self.name().to_string(), self.interval());
-
-        logger.register(log);
-        self.set_logger(logger);
-    }
+    fn init(&mut self, context: &mut OutputContext) {}
 
     async fn before_run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
         Ok(())
@@ -43,11 +32,8 @@ pub trait Output: Send + Close + Sync {
         self.before_run(context).await?;
         self.init(context);
         self.run(context).await?;
-        self.get_logger().log().await;
         self.after_run(context).await
     }
-
-    fn interval(&self) -> usize;
 
     fn name(&self) -> &str;
 
@@ -56,9 +42,7 @@ pub trait Output: Send + Close + Sync {
 
 pub struct DelegatedOutput {
     outputs: Vec<Box<dyn Output>>,
-    logger: super::StaticsLogger,
     name: String,
-    interval: usize,
 }
 
 #[async_trait]
@@ -69,8 +53,6 @@ impl Close for DelegatedOutput {
         for output in outputs {
             output.close().await?;
         }
-        // 关闭日志输出
-        self.logger.close();
 
         Ok(())
     }
@@ -78,20 +60,8 @@ impl Close for DelegatedOutput {
 
 #[async_trait]
 impl Output for DelegatedOutput {
-    fn get_logger(&self) -> &StaticsLogger {
-        &self.logger
-    }
-
-    fn set_logger(&mut self, logger: StaticsLogger) {
-        self.logger = logger;
-    }
-
     fn name(&self) -> &str {
         return &self.name;
-    }
-
-    fn interval(&self) -> usize {
-        self.interval
     }
 
     async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
@@ -103,19 +73,12 @@ impl Output for DelegatedOutput {
         Ok(())
     }
 }
-use super::log::StaticsLog;
 
 impl DelegatedOutput {
-    pub fn new(
-        outputs: Vec<Box<dyn Output>>,
-        logger: super::StaticsLogger,
-        interval: usize,
-    ) -> Self {
+    pub fn new(outputs: Vec<Box<dyn Output>>, interval: usize) -> Self {
         Self {
             outputs,
-            logger,
             name: "delegate".to_string(),
-            interval,
         }
     }
 

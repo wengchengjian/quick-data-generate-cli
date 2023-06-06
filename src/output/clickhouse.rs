@@ -46,20 +46,8 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for ClickHouseOutput {
-    fn get_logger(&self) -> &StaticsLogger {
-        return &self.logger;
-    }
-
-    fn set_logger(&mut self, logger: StaticsLogger) {
-        self.logger = logger;
-    }
-
     fn name(&self) -> &str {
         return &self.name;
-    }
-
-    fn interval(&self) -> usize {
-        return self.interval;
     }
 
     async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {

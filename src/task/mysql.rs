@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use mysql_async::{prelude::*, Conn, Params, TxOpts, Value};
 use std::{
+    collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
@@ -9,7 +10,7 @@ use tokio::sync::{mpsc, Mutex};
 use crate::{
     column::{DataTypeEnum, OutputColumn},
     fake::get_fake_data,
-    log::{ChannelStaticsLog, StaticsLogger},
+    log::{incr_log, ChannelStaticsLog, StaticsLogger},
     output::Close,
     shutdown::{self, Shutdown},
 };
@@ -26,7 +27,6 @@ pub struct MysqlTask {
     pub shutdown: Shutdown,
     pub columns: Vec<OutputColumn>,
     pub executor: MysqlTaskExecutor,
-    pub sender: mpsc::Sender<ChannelStaticsLog>,
 }
 #[async_trait]
 impl Close for MysqlTask {
@@ -45,12 +45,12 @@ impl MysqlTask {
         table: String,
         columns: Vec<OutputColumn>,
         shutdown_sender: mpsc::Sender<()>,
-        sender: mpsc::Sender<ChannelStaticsLog>,
         shutdown: Shutdown,
     ) -> MysqlTask {
         let data2 = database.clone();
         let table2: String = table.clone();
         let columns2 = columns.clone();
+        let name2 = name.clone();
         MysqlTask {
             name,
             batch,
@@ -61,8 +61,7 @@ impl MysqlTask {
             columns,
             table,
             database,
-            sender,
-            executor: MysqlTaskExecutor::new(conn, batch, count, data2, table2, columns2),
+            executor: MysqlTaskExecutor::new(conn, batch, count, data2, table2, columns2, name2),
         }
     }
 
@@ -82,22 +81,22 @@ impl MysqlTask {
     }
 
     pub async fn run(&mut self) -> crate::Result<()> {
-        println!("task:{} will running...", self.name);
+        println!("{} will running...", self.name);
         let (columns_name, columns_name_val) = self.get_columns_name();
 
         while !self.shutdown.is_shutdown() {
-            let log = tokio::select! {
-                log = self.executor.add_batch(columns_name.clone(), columns_name_val.clone()) => log,
+            tokio::select! {
+                _ = self.executor.add_batch(columns_name.clone(), columns_name_val.clone()) => {
+
+                },
                 _ = self.shutdown.recv() => {
-                    break;
+                    continue;
                 }
             };
-
-            self.sender.send(log).await?;
+            incr_log(&self.name, self.batch, 1).await;
 
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
-        println!("task:{} will exiting...", self.name);
         Ok(())
     }
 }
@@ -110,6 +109,7 @@ pub struct MysqlTaskExecutor {
     pub batch: usize,
     pub count: usize,
     pub columns: Vec<OutputColumn>,
+    pub task_name: String,
 }
 
 impl MysqlTaskExecutor {
@@ -120,6 +120,7 @@ impl MysqlTaskExecutor {
         database: String,
         table: String,
         columns: Vec<OutputColumn>,
+        task_name: String,
     ) -> Self {
         Self {
             conn,
@@ -128,16 +129,11 @@ impl MysqlTaskExecutor {
             count,
             database,
             table,
+            task_name,
         }
     }
 
-    pub async fn add_batch(
-        &mut self,
-        columns_name: String,
-        columns_name_val: String,
-    ) -> ChannelStaticsLog {
-        let mut log = ChannelStaticsLog::new(0, 0);
-
+    pub async fn add_batch(&mut self, columns_name: String, columns_name_val: String) {
         let mut params = vec![];
 
         for i in 0..self.batch {
@@ -151,17 +147,20 @@ impl MysqlTaskExecutor {
             "INSERT INTO {}.{} ({}) VALUES ({})",
             self.database, self.table, columns_name, columns_name_val
         );
-        let sql_builder = insert_header
+        insert_header
             .with(params.iter().map(|param| {
-                let param = Value::from(param.clone());
-                return Params::from(param);
+                let obj: HashMap<Vec<u8>, Value> = param
+                    .as_object()
+                    .unwrap()
+                    .clone()
+                    .into_iter()
+                    .map(|(k, v)| (k.as_bytes().to_vec(), Value::from(v)))
+                    .collect();
+                return Params::Named(obj);
             }))
             .batch(&mut self.conn)
             .await
             .expect("执行sql失败");
-        log.total = self.batch;
-        log.commit = 1;
-
-        log
+        
     }
 }

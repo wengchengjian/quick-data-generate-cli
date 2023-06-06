@@ -3,6 +3,7 @@ use crate::{
     output::{clickhouse::ClickHouseOutput, mysql::MysqlOutput},
 };
 use cli::Cli;
+use log::STATICS_LOGGER;
 use output::Output;
 use std::error::Error;
 use structopt::StructOpt;
@@ -19,6 +20,9 @@ pub mod output;
 pub mod shutdown;
 pub mod task;
 pub mod util;
+
+#[macro_use]
+extern crate lazy_static;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -64,35 +68,37 @@ pub fn create_context(cli: &Cli) -> OutputContext {
 }
 
 /// 创建代理输出任务
-pub fn create_delegate_output(cli: Cli) -> (DelegatedOutput, OutputContext) {
+pub async fn create_delegate_output(cli: Cli) -> (DelegatedOutput, OutputContext) {
     let cli_args = cli.clone();
     // 初始化日志
     let interval = cli.interval.unwrap_or(5);
 
-    let logger = StaticsLogger::new(interval);
+    STATICS_LOGGER.lock().await.interval(interval);
     // 获取所有输出任务
     let outputs: Vec<Box<dyn output::Output>> = parse_output(cli_args);
 
     let context = create_context(&cli);
 
-    let output = DelegatedOutput::new(outputs, logger, interval);
+    let output = DelegatedOutput::new(outputs, interval);
 
     return (output, context);
 }
 
 pub async fn execute(cli: Cli) -> Result<()> {
-    let (mut output, mut context) = create_delegate_output(cli);
-
+    let (mut output, mut context) = create_delegate_output(cli).await;
     tokio::select! {
         _ = output.execute(&mut context) => {
             println!("\nquick-data-generator is exiting...");
+        }
+        _ = StaticsLogger::log() => {
+            println!("\nlogger is exiting...");
         }
         _ = signal::ctrl_c() => {
             println!("\nreceived stop signal, exiting...");
         }
     }
     // 关闭任务
-    output.close();
+    output.close().await?;
 
     Ok(())
 }

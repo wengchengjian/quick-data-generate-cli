@@ -1,4 +1,4 @@
-use mysql_async::{prelude::*, Conn};
+use mysql_async::{prelude::*, Conn, from_row};
 use mysql_async::{Opts, Pool};
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicBool, Arc};
@@ -26,13 +26,13 @@ impl MysqlOutput {
     }
 
     pub fn connect(&self) -> crate::Result<Pool> {
-        let url = "mysql://root:password@localhost:3307/db_name";
+//        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
             "mysql://{}:{}@{}:{}/{}",
             self.args.user, self.args.password, self.args.host, self.args.port, self.args.database
         );
 
-        let database_url = Opts::from_url(url.as_str())?;
+        let database_url = Opts::from_url(&url)?;
 
         let pool = Pool::new(database_url);
 
@@ -59,9 +59,28 @@ impl MysqlOutput {
         let mut conn = conn;
         let res = sql
             .with(())
-            .map(&mut conn, |(Field, Type)| OutputColumn {
-                name: Field,
-                data_type: DataTypeEnum::from_string(Type).unwrap(),
+            .map(&mut conn, |row | {
+
+                let column = from_row::<(String, String,String,Option<String>,Option<String>,Option<String>)>(row);
+                let Field = column.0;
+                let Type = column.1;
+                let Null = column.2;
+                let Key = column.3.unwrap_or("NO".to_string());
+                let Default = column.4.unwrap_or("NULL".to_string());
+                let Extra = column.5.unwrap_or("".to_string());
+                let column = MysqlColumnDefine {
+                    Field,
+                    Type,
+                    Null,
+                    Key,
+                    Default,
+                    Extra,
+                };
+
+                return OutputColumn {
+                    name: column.Field.clone(),
+                    data_type: DataTypeEnum::from_string(column.Type.clone()).unwrap(),
+                }
             })
             .await?;
         Ok(res)
@@ -84,7 +103,7 @@ impl Into<MysqlArgs> for Cli {
             host: self.host,
             port: self.port.unwrap_or(3306),
             user: self.user.unwrap_or("root".to_string()),
-            password: self.password.unwrap_or("wcj520666".to_string()),
+            password: self.password.unwrap_or("wcj520600".to_string()),
             database: self.database.unwrap_or("tests".to_string()),
 
             table: self.table.unwrap_or("payment".to_string()),

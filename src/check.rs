@@ -4,7 +4,7 @@ pub static DEFAULT_BATCH_SIZE: usize = 5_0000;
 /// 单次最大提交数量
 pub static MAX_BATCH_SIZE: usize = 10_0000;
 
-/// 日志最小打印间隔
+/// 单次最小提交数量
 pub static MIN_BATCH_SIZE: usize = 1_000;
 
 /// 日志最大打印间隔

@@ -348,6 +348,7 @@ dependencies = [
  "futures",
  "lazy_static",
  "mysql_async",
+ "mysql_common",
  "num_cpus",
  "rand",
  "serde",

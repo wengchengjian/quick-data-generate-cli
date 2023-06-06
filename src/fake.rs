@@ -207,7 +207,9 @@ pub fn get_random_paragraphs_zh(count: Range<usize>) -> Vec<String> {
     Paragraphs(ZH_CN, count).fake()
 }
 
-pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Value {
+pub type Json = serde_json::Value;
+
+pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Json {
     let mut data = json!({});
     for colum in columns {
         let name = colum.name();

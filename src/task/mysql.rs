@@ -1,6 +1,5 @@
 use async_trait::async_trait;
-use mysql_async::{prelude::*, Conn, Params, TxOpts};
-use serde_json::{json, Value};
+use mysql_async::{prelude::*, Conn, Params, TxOpts, Value};
 use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
@@ -83,6 +82,7 @@ impl MysqlTask {
     }
 
     pub async fn run(&mut self) -> crate::Result<()> {
+        println!("task:{} will running...", self.name);
         let (columns_name, columns_name_val) = self.get_columns_name();
 
         while !self.shutdown.is_shutdown() {
@@ -97,6 +97,7 @@ impl MysqlTask {
 
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
+        println!("task:{} will exiting...", self.name);
         Ok(())
     }
 }
@@ -122,7 +123,7 @@ impl MysqlTaskExecutor {
     ) -> Self {
         Self {
             conn,
-            batch,
+            batch: 1000,
             columns,
             count,
             database,
@@ -144,15 +145,20 @@ impl MysqlTaskExecutor {
             params.push(data);
         }
 
-        let params = Params::from(params);
-
         // let txOpts = TxOpts::default();
         // self.conn.start_transaction(txOpts).await?;
         let insert_header = format!(
             "INSERT INTO {}.{} ({}) VALUES ({})",
             self.database, self.table, columns_name, columns_name_val
         );
-        insert_header.with(params).run(&mut self.conn).await;
+        let sql_builder = insert_header
+            .with(params.iter().map(|param| {
+                let param = Value::from(param.clone());
+                return Params::from(param);
+            }))
+            .batch(&mut self.conn)
+            .await
+            .expect("执行sql失败");
         log.total = self.batch;
         log.commit = 1;
 

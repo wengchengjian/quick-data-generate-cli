@@ -1,6 +1,6 @@
 use crate::{
     log::{StaticsLogFactory, StaticsLogger},
-    output::clickhouse::ClickHouseOutput,
+    output::{clickhouse::ClickHouseOutput, mysql::MysqlOutput},
 };
 use cli::Cli;
 use output::Output;
@@ -11,13 +11,16 @@ use tokio::signal;
 // use tracing_subscriber::FmtSubscriber;
 pub mod check;
 pub mod cli;
+pub mod column;
+pub mod fake;
 pub mod log;
 pub mod model;
 pub mod output;
+pub mod shutdown;
 pub mod task;
 pub mod util;
 
-pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -36,14 +39,12 @@ pub fn parse_output(cli: Cli) -> Vec<Box<dyn output::Output>> {
     let output_enum = cli.output;
 
     let output = match output_enum {
-        output::OutputEnum::ClickHouse => {
-            // 初始化输出源
-            let mut output = ClickHouseOutput::new(
-                cli,
-            );
-            output
-        }
-        //        output::OutputEnum::Mysql => todo!(),
+        // output::OutputEnum::ClickHouse => {
+        //     // 初始化输出源
+        //     let mut output = ClickHouseOutput::new(cli);
+        //     output
+        // }
+        output::OutputEnum::Mysql => MysqlOutput::new(cli),
         //        output::OutputEnum::Kafka => todo!(),
         //        output::OutputEnum::ElasticSearch => todo!(),
         //        output::OutputEnum::CSV => todo!(),
@@ -72,7 +73,7 @@ pub fn create_delegate_output(cli: Cli) -> (DelegatedOutput, OutputContext) {
     // 获取所有输出任务
     let outputs: Vec<Box<dyn output::Output>> = parse_output(cli_args);
 
-    let mut context = create_context(&cli);
+    let context = create_context(&cli);
 
     let output = DelegatedOutput::new(outputs, logger, interval);
 

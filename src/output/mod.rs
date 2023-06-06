@@ -42,9 +42,8 @@ pub trait Output: Send + Close + Sync {
     async fn execute(&mut self, context: &mut OutputContext) -> crate::Result<()> {
         self.before_run(context).await?;
         self.init(context);
-        let logger = self.get_logger();
-        print_log(&logger).await;
         self.run(context).await?;
+        self.get_logger().log().await;
         self.after_run(context).await
     }
 
@@ -53,10 +52,6 @@ pub trait Output: Send + Close + Sync {
     fn name(&self) -> &str;
 
     async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()>;
-}
-
-async fn print_log(logger: &StaticsLogger) {
-    logger.log().await
 }
 
 pub struct DelegatedOutput {
@@ -148,8 +143,8 @@ impl OutputContext {
 
 #[derive(Debug, Clone, Copy)]
 pub enum OutputEnum {
-    ClickHouse,
-    //    Mysql,
+    // ClickHouse,
+    Mysql,
     //
     //    Kafka,
     //
@@ -164,9 +159,12 @@ impl FromStr for OutputEnum {
     type Err = Box<dyn std::error::Error>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_lowercase();
+
+        let s = s.as_str();
         match s {
-            "clickhouse" => Ok(OutputEnum::ClickHouse),
-            //            "mysql" => Ok(OutputEnum::Mysql),
+            // "clickhouse" => Ok(OutputEnum::ClickHouse),
+            "mysql" => Ok(OutputEnum::Mysql),
             //            "kafka" => Ok(OutputEnum::Kafka),
             //            "elasticsearch" => Ok(OutputEnum::ElasticSearch),
             //            "csv" => Ok(OutputEnum::CSV),

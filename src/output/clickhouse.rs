@@ -1,6 +1,6 @@
 use clickhouse::Client;
 
-use crate::{cli::Cli, task::ClickHouseTask};
+use crate::{cli::Cli, task::clickhouse::ClickHouseTask};
 
 impl ClickHouseOutput {
     pub fn new(cli: Cli) -> Self {
@@ -27,7 +27,7 @@ impl ClickHouseOutput {
 impl Into<ClickHouseArgs> for Cli {
     fn into(self) -> ClickHouseArgs {
         ClickHouseArgs {
-            host: self.host.unwrap_or("192.168.180.217".to_string()),
+            host: self.host,
             port: self.port.unwrap_or(8123),
             user: self.user.unwrap_or("default".to_string()),
             password: self.password.unwrap_or("!default@123".to_string()),

@@ -8,8 +8,8 @@ use crate::output::OutputEnum;
     about = "A command line tool to load data into Output source."
 )]
 pub struct Cli {
-    #[structopt(long)]
-    pub host: Option<String>,
+    #[structopt(long, default_value = "127.0.0.1")]
+    pub host: String,
 
     #[structopt(long)]
     pub database: Option<String>,
@@ -38,6 +38,6 @@ pub struct Cli {
     #[structopt(short, long)]
     pub concurrency: Option<usize>,
 
-    #[structopt(short, long, default_value = "clickhouse")]
+    #[structopt(short, long, default_value = "mysql")]
     pub output: OutputEnum,
 }

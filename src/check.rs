@@ -30,63 +30,63 @@ pub fn check_args(cli: &mut super::Cli) {
 }
 
 pub fn check_interval(cli: &mut super::Cli) {
-    let mut interval = cli.interval;
+    let interval = cli.interval;
     match interval {
         Some(val) => {
             if val < MIN_INTERVAL {
                 println!("interval must greater than {MIN_INTERVAL}");
-                interval.insert(MIN_INTERVAL);
+                cli.interval = Some(MIN_INTERVAL);
             }
 
             if val > MAX_INTERVAL {
                 println!("interval must less than {MAX_INTERVAL}");
-                interval.insert(MAX_INTERVAL);
+                cli.interval = Some(MAX_INTERVAL);
             }
         }
         None => {
-            interval.insert(DEFAULT_INTERVAL);
+            cli.interval = Some(DEFAULT_INTERVAL);
         }
     }
 }
 
 pub fn check_thread_num(cli: &mut super::Cli) {
-    let mut num_threads = num_cpus::get();
+    let num_threads = num_cpus::get();
 
-    let mut th = cli.concurrency;
+    let th = cli.concurrency;
     match th {
         Some(val) => {
             if val < MIN_THREAD_SIZE {
                 println!("threads must greater than {MIN_THREAD_SIZE}");
-                th.insert(num_threads);
+                cli.concurrency = Some(num_threads);
             }
 
             if val > num_threads {
                 println!("threads must less than or equal to the number of cores: {num_threads}");
-                th.insert(num_threads);
+                cli.concurrency = Some(num_threads);
             }
         }
         None => {
-            th.insert(num_threads);
+            cli.concurrency = Some(num_threads);
         }
     }
 }
 
 pub fn check_batch_size(cli: &mut super::Cli) {
-    let mut batch = cli.batch;
+    let batch = cli.batch;
     match batch {
         Some(val) => {
             if val < MIN_BATCH_SIZE {
                 println!("batch size must greater than {MIN_BATCH_SIZE}");
-                batch.insert(MIN_BATCH_SIZE);
+                cli.batch = Some(MIN_BATCH_SIZE);
             }
 
             if val > MAX_BATCH_SIZE {
                 println!("batch size must less than {MAX_BATCH_SIZE}");
-                batch.insert(MAX_BATCH_SIZE);
+                cli.batch = Some(MAX_BATCH_SIZE);
             }
         }
         None => {
-            batch.insert(DEFAULT_BATCH_SIZE);
+            cli.batch = Some(DEFAULT_BATCH_SIZE);
         }
     }
 }

@@ -1,8 +1,16 @@
-use mysql_async::prelude::*;
+use mysql_async::{prelude::*, Conn};
+use mysql_async::{Opts, Pool};
+use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicBool, Arc};
+use std::vec;
+use tokio::join;
 use tokio::sync::{broadcast, mpsc, Semaphore};
 
 use crate::cli::Cli;
+use crate::column::{DataTypeEnum, OutputColumn};
+use crate::log::{self, ChannelStaticsLog};
+use crate::shutdown::Shutdown;
+use crate::task::mysql::MysqlTask;
 
 impl MysqlOutput {
     pub fn new(cli: Cli) -> Self {
@@ -13,31 +21,74 @@ impl MysqlOutput {
             args: cli.into(),
             logger: StaticsLogger::new(interval),
             tasks: vec![],
+            shutdown: AtomicBool::new(false),
         }
     }
 
-    pub fn connect(&self) -> crate::Result<()> {
+    pub fn connect(&self) -> crate::Result<Pool> {
+        let url = "mysql://root:password@localhost:3307/db_name";
         let url = format!(
             "mysql://{}:{}@{}:{}/{}",
             self.args.user, self.args.password, self.args.host, self.args.port, self.args.database
         );
-        Ok(())
+
+        let database_url = Opts::from_url(url.as_str())?;
+
+        let pool = Pool::new(database_url);
+
+        Ok(pool)
     }
+
+    pub fn get_logger_mut(&mut self) -> &mut StaticsLogger {
+        &mut self.logger
+    }
+    async fn start_log(&mut self, msg_rx: &mut mpsc::Receiver<ChannelStaticsLog>) {
+        loop {
+            let msg = msg_rx.recv().await.unwrap();
+            self.logger.add_total(&msg.name, msg.total);
+            self.logger.add_commit(&msg.name, msg.commit);
+        }
+    }
+    /// 根据数据库和表获取字段定义
+    pub async fn get_columns_define(
+        conn: Conn,
+        database: &str,
+        table: &str,
+    ) -> crate::Result<Vec<OutputColumn>> {
+        let sql = format!("desc {}.{}", database, table);
+        let mut conn = conn;
+        let res = sql
+            .with(())
+            .map(&mut conn, |(Field, Type)| OutputColumn {
+                name: Field,
+                data_type: DataTypeEnum::from_string(Type).unwrap(),
+            })
+            .await?;
+        Ok(res)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct MysqlColumnDefine {
+    pub Field: String,
+    pub Type: String,
+    pub Null: String,
+    pub Key: String,
+    pub Default: String,
+    pub Extra: String,
 }
 
 impl Into<MysqlArgs> for Cli {
     fn into(self) -> MysqlArgs {
         MysqlArgs {
-            host: self.host.unwrap_or("192.168.180.217".to_string()),
-            port: self.port.unwrap_or(8123),
-            user: self.user.unwrap_or("default".to_string()),
-            password: self.password.unwrap_or("!default@123".to_string()),
-            database: self.database.unwrap_or("ws_dwd".to_string()),
+            host: self.host,
+            port: self.port.unwrap_or(3306),
+            user: self.user.unwrap_or("root".to_string()),
+            password: self.password.unwrap_or("wcj520666".to_string()),
+            database: self.database.unwrap_or("tests".to_string()),
 
-            table: self
-                .table
-                .unwrap_or("dwd_standard_ip_session_all".to_string()),
-            batch: self.batch.unwrap_or(50000),
+            table: self.table.unwrap_or("payment".to_string()),
+            batch: self.batch.unwrap_or(5000),
             count: self.count.unwrap_or(0),
         }
     }
@@ -55,47 +106,88 @@ impl super::Output for MysqlOutput {
         self.logger = logger;
     }
 
-    fn name(&self) -> &str {
-        return &self.name;
-    }
-
     fn interval(&self) -> usize {
         return self.interval;
     }
 
+    fn name(&self) -> &str {
+        return &self.name;
+    }
+
     async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
+        // 获取连接池
+        let pool = self.connect().expect("获取mysql连接失败!");
+
+        let conn = pool.get_conn().await.expect("获取mysql连接失败!");
+        // 获取字段定义
+        let columns = MysqlOutput::get_columns_define(conn, &self.args.database, &self.args.table)
+            .await
+            .expect("获取字段定义失败");
+        let (notify_shutdown, _) = broadcast::channel(1);
+        let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
+        let (msg_tx, mut msg_rx) = mpsc::channel::<ChannelStaticsLog>(10);
+
+        let batch = self.args.batch;
+        let count = self.args.count;
+        let task_num = 0;
+
+        while !self.shutdown.load(Ordering::SeqCst) {
+            let permit = context.concurrency.clone().acquire_owned().await.unwrap();
+
+            let task_name = format!("{}-task-{}", self.name, task_num);
+            let conn = pool.get_conn().await?;
+
+            let columns = columns.clone();
+            let database = self.args.database.clone();
+            let table = self.args.table.clone();
+
+            let mut task = MysqlTask::new(
+                task_name,
+                conn,
+                batch,
+                count,
+                database,
+                table,
+                columns,
+                shutdown_complete_tx.clone(),
+                msg_tx.clone(),
+                Shutdown::new(notify_shutdown.subscribe()),
+            );
+            let future = tokio::spawn(async move {
+                if let Err(err) = task.run().await {
+                    println!("task run error: {}", err);
+                }
+
+                drop(permit);
+            });
+
+            tokio::select! {
+                _ = future => {
+                    continue;
+                }
+                _ = self.start_log(&mut msg_rx) => {
+                    continue;
+                }
+            }
+        }
+
+        // When `notify_shutdown` is dropped, all tasks which have `subscribe`d will
+        // receive the shutdown signal and can exit
+        drop(notify_shutdown);
+        // Drop final `Sender` so the `Receiver` below can complete
+        drop(shutdown_complete_tx);
+        // 等待所有的future执行完毕
+        // futures::future::join_all(futures).await;
+        let _ = shutdown_complete_rx.recv().await;
+
         Ok(())
-        //        let pool = self.connect().expect("获取mysql连接失败!");
-        //
-        //        let mut conn = pool.get_conn()?;
-        //
-        //        let batch = self.args.batch;
-        //        let count = self.args.count;
-        //        let semaphore: Arc<Semaphore> = context.concurrency.clone();
-        //        let task_num = 0;
-        //        loop {
-        //            let permit = semaphore.acquire_owned().await.unwrap();
-        //
-        //            let task_name = format!("{}-task-{}", self.name, task_num);
-        //
-        //            let client = client.clone();
-        //            let mut task = MysqlTask::new(task_name, client, batch, count);
-        //            self.tasks.push(task);
-        //            let mut logger = self.logger;
-        //            tokio::spawn(async move {
-        //                if let Err(err) = task.run(&mut logger).await {
-        //                    println!("task run error: {}", err);
-        //                }
-        //
-        //                drop(permit);
-        //            });
-        //        }
     }
 }
 
 #[async_trait]
 impl Close for MysqlOutput {
     async fn close(&mut self) -> crate::Result<()> {
+        self.shutdown.store(true, Ordering::SeqCst);
         for task in &mut self.tasks {
             task.close().await?;
         }
@@ -133,16 +225,9 @@ pub struct MysqlOutput {
 
     pub args: MysqlArgs,
 
-    pub tasks: Vec<MysqlOutputTask>,
-}
+    pub tasks: Vec<MysqlTask>,
 
-pub struct MysqlOutputTask {}
-
-#[async_trait]
-impl Close for MysqlOutputTask {
-    async fn close(&mut self) -> crate::Result<()> {
-        Ok(())
-    }
+    pub shutdown: AtomicBool,
 }
 
 #[cfg(test)]

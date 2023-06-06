@@ -1,5 +1,23 @@
 {
     "rust-analyzer.linkedProjects": [
+        ".\\Cargo.toml",
+        ".\\Cargo.toml",
+        ".\\Cargo.toml",
+        ".\\Cargo.toml",
         ".\\Cargo.toml"
+    ],
+    "cSpell.words": [
+        "clickhouse",
+        "DATETIME",
+        "LONGBLOB",
+        "LONGTEXT",
+        "MEDIUMBLOB",
+        "MEDIUMINT",
+        "MEDIUMTEXT",
+        "sqlserver",
+        "structopt",
+        "TINYBLOB",
+        "TINYINT",
+        "TINYTEXT"
     ]
 }

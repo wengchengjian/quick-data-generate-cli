@@ -189,3 +189,25 @@ impl StaticsLog {
         self.commit.fetch_add(val, Ordering::SeqCst);
     }
 }
+
+#[derive(Debug)]
+pub struct ChannelStaticsLog {
+    pub name: String,
+
+    pub total: usize,
+
+    pub commit: usize,
+
+    pub completed: bool,
+}
+
+impl ChannelStaticsLog {
+    pub fn new(total: usize, commit: usize) -> Self {
+        Self {
+            name: "Default".into(),
+            total,
+            commit,
+            completed: false,
+        }
+    }
+}

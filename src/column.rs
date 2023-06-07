@@ -72,7 +72,7 @@ impl DataTypeEnum {
 use regex::Regex;
 
 lazy_static! {
-    pub static ref DATA_TYPE_REGEX: Regex = Regex::new(r"(?P<tp>\w+)(\((\d+)\))?").unwrap();
+    pub static ref DATA_TYPE_REGEX: Regex = Regex::new(r"(?P<tp>\w+)(\((\d+)\))?\s*(?P<ex>\w*)").unwrap();
 }
 
 impl FromStr for DataTypeEnum {
@@ -81,13 +81,22 @@ impl FromStr for DataTypeEnum {
         let s: String = s.to_uppercase();
         let match_str = s.as_str();
         let caps = DATA_TYPE_REGEX.captures(match_str).unwrap();
-        let tp = &caps["tp"];
-        match tp {
+        let mut tp_str = String::from(&caps["tp"]);
+
+        if &caps["ex"].len() > &0 {
+            tp_str = format!("{} {}", &caps["tp"], &caps["ex"]);
+        } 
+        match tp_str.as_str() {
+            "TINYINT UNSIGNED" => Ok(DataTypeEnum::UInt8),
             "TINYINT" => Ok(DataTypeEnum::Int8),
             "SMALLINT" => Ok(DataTypeEnum::Int16),
+            "SMALLINT UNSIGNED" => Ok(DataTypeEnum::UInt16),
             "MEDIUMINT" => Ok(DataTypeEnum::Int32),
+            "MEDIUMINT UNSIGNED" => Ok(DataTypeEnum::UInt32),
             "INT" => Ok(DataTypeEnum::Int32),
+            "INT UNSIGNED" => Ok(DataTypeEnum::Int32),
             "BIGINT" => Ok(DataTypeEnum::Int64),
+            "BIGINT UNSIGNED" => Ok(DataTypeEnum::UInt64),
             "FLOAT" => Ok(DataTypeEnum::Float32),
             "DOUBLE" => Ok(DataTypeEnum::Float64),
             "DATE" => Ok(DataTypeEnum::Date),

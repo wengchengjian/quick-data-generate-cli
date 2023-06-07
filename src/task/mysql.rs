@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     column::OutputColumn,
-    fake::get_fake_data,
+    fake::{get_fake_data, get_fake_data_mysql},
     log::{incr_log, register},
     output::Close,
     shutdown::Shutdown,
@@ -57,7 +57,7 @@ impl MysqlTask {
             columns,
             table,
             database,
-            executor: MysqlTaskExecutor::new(conn, 2000, count, data2, table2, columns2, name2),
+            executor: MysqlTaskExecutor::new(conn, 10, count, data2, table2, columns2, name2),
         }
     }
 
@@ -133,7 +133,7 @@ impl MysqlTaskExecutor {
         let mut params = vec![];
 
         for i in 0..self.batch {
-            let data = get_fake_data(&self.columns);
+            let data = get_fake_data_mysql(&self.columns);
             params.push(data);
         }
 
@@ -143,20 +143,13 @@ impl MysqlTaskExecutor {
             "INSERT INTO {}.{} ({}) VALUES ({})",
             self.database, self.table, columns_name, columns_name_val
         );
-        insert_header
-            .with(params.iter().map(|param| {
-                let obj: HashMap<Vec<u8>, Value> = param
-                    .as_object()
-                    .unwrap()
-                    .clone()
-                    .into_iter()
-                    .map(|(k, v)| (k.as_bytes().to_vec(), Value::from(v)))
-                    .collect();
-                return Params::Named(obj);
-            }))
-            .batch(&mut self.conn)
-            .await
-            .expect("执行sql失败");
+        
+        if let Err(err) = insert_header
+        .with(params)
+        .batch(&mut self.conn)
+        .await  {
+            println!("insert error: {:?}", err);
+        }
 
         incr_log(&self.task_name, self.batch, 1).await;
     }

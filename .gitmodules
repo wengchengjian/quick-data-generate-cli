@@ -1,0 +1,6 @@
+[submodule "mysql_async"]
+	path = ./submodule/mysql_async
+	url = https://github.com/blackbeam/mysql_async.git
+[submodule "rust_mysql_common"]
+	path = ./submodule/rust_mysql_common
+	url = https://github.com/blackbeam/rust_mysql_common.git

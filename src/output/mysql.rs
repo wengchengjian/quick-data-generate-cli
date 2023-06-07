@@ -100,8 +100,8 @@ impl Into<MysqlArgs> for Cli {
             password: self.password.unwrap_or("wcj520600".to_string()),
             database: self.database.unwrap_or("tests".to_string()),
 
-            table: self.table.unwrap_or("payment".to_string()),
-            batch: self.batch.unwrap_or(1000),
+            table: self.table.unwrap_or("BFC_TSA_PACKET_INFO".to_string()),
+            batch: self.batch.unwrap_or(5000),
             count: self.count.unwrap_or(0),
         }
     }

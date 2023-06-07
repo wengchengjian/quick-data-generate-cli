@@ -351,6 +351,7 @@ dependencies = [
  "mysql_common",
  "num_cpus",
  "rand",
+ "regex",
  "serde",
  "serde_json",
  "structopt",

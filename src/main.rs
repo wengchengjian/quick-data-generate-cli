@@ -1,11 +1,10 @@
 use crate::{
     log::{StaticsLogFactory, StaticsLogger},
-    output::{clickhouse::ClickHouseOutput, mysql::MysqlOutput},
+    output::mysql::MysqlOutput,
 };
 use cli::Cli;
 use log::STATICS_LOGGER;
 use output::Output;
-use std::error::Error;
 use structopt::StructOpt;
 use tokio::signal;
 // use tracing::{error, info, Level};

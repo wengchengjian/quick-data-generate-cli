@@ -22,9 +22,6 @@ impl Close for ClickHouseTask {
     async fn close(&mut self) -> crate::Result<()> {
         self.shutdown.store(true, Ordering::SeqCst);
 
-        // 判断任务是否完成
-        self.completed.lock().await;
-
         Ok(())
     }
 }
@@ -42,12 +39,6 @@ impl ClickHouseTask {
     }
 
     pub async fn run(&mut self, logger: &mut StaticsLogger) -> crate::Result<()> {
-        let batch = self.batch;
-        let is_completed = self.completed.lock().await;
-
-        while !self.shutdown.load(Ordering::SeqCst) {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
         Ok(())
     }
 

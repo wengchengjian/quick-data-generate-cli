@@ -69,15 +69,20 @@ impl DataTypeEnum {
         Ok(data_type)
     }
 }
+use regex::Regex;
+
+lazy_static! {
+    pub static ref DATA_TYPE_REGEX: Regex = Regex::new(r"(?P<tp>\w+)(\((\d+)\))?").unwrap();
+}
 
 impl FromStr for DataTypeEnum {
     type Err = Box<dyn std::error::Error>;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s: String = s.to_uppercase();
         let match_str = s.as_str();
-
-        match match_str {
+        let caps = DATA_TYPE_REGEX.captures(match_str).unwrap();
+        let tp = &caps["tp"];
+        match tp {
             "TINYINT" => Ok(DataTypeEnum::Int8),
             "SMALLINT" => Ok(DataTypeEnum::Int16),
             "MEDIUMINT" => Ok(DataTypeEnum::Int32),

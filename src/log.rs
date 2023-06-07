@@ -21,8 +21,6 @@ pub struct StaticsLog {
 
     start: AtomicU64,
 
-    interval: usize,
-
     completed: bool,
 }
 
@@ -42,7 +40,7 @@ impl StaticsLogFactory {
         let log = self
             .logs
             .entry(name.to_string())
-            .or_insert(StaticsLog::new(name.to_string(), 5));
+            .or_insert(StaticsLog::new(name.to_string()));
 
         log.add_total(total as u64);
     }
@@ -51,7 +49,7 @@ impl StaticsLogFactory {
         let log = self
             .logs
             .entry(name.to_string())
-            .or_insert(StaticsLog::new(name.to_string(), 5));
+            .or_insert(StaticsLog::new(name.to_string()));
 
         log.add_commit(commit as u64);
     }
@@ -102,19 +100,23 @@ impl StaticsLogger {
     pub async fn log() {
         println!("start logging tasks log...");
         loop {
-            {
-                let logger = STATICS_LOGGER.lock().await;
-                if logger.shutdown.load(Ordering::SeqCst) {
-                    return;
-                }
-                for log in logger.factory.logs.values() {
-                    log.print_log().await;
-                    println!();
-                }
-                let interval = logger.interval;
-                drop(logger);
-                tokio::time::sleep(Duration::from_secs(interval as u64)).await;
+            let logger = STATICS_LOGGER.lock().await;
+            if logger.shutdown.load(Ordering::SeqCst) {
+                return;
             }
+
+            for _ in logger.factory.logs.values() {
+                print!("\x1B[1A");
+            }
+            for log in logger.factory.logs.values() {
+                log.print_log().await;
+                println!();
+            }
+
+            let interval = logger.interval;
+            drop(logger);
+
+            tokio::time::sleep(Duration::from_secs(interval as u64)).await;
         }
     }
 
@@ -151,27 +153,25 @@ impl StaticsLogger {
     }
 }
 
-
-
 pub async fn incr_log(name: &str, total: usize, commit: usize) {
-    if let Ok(mut logger) = STATICS_LOGGER.try_lock() {
-        logger.add_total(name, total);
-        logger.add_commit(name, commit);
-    } else {
-        println!("not get logger lock")
-    }
-    
+    let mut logger = STATICS_LOGGER.lock().await;
+    logger.add_total(name, total);
+    logger.add_commit(name, commit);
+}
+
+pub async fn register(name: &str) {
+    let mut logger = STATICS_LOGGER.lock().await;
+    logger.register(StaticsLog::new(name.to_string()));
 }
 
 impl StaticsLog {
-    pub fn new(name: String, interval: usize) -> Self {
+    pub fn new(name: String) -> Self {
         Self {
             total: AtomicU64::new(0),
             commit: AtomicU64::new(0),
             start: AtomicU64::new(get_current_date()),
             name,
             completed: false,
-            interval,
         }
     }
 
@@ -179,8 +179,12 @@ impl StaticsLog {
         let total = self.total();
         let commit = self.commit();
         let start = self.start();
+        let name = &self.name;
         let now = get_current_date();
-        let time = now - start;
+        let mut time = now - start;
+        if time == 0 {
+            time = 1;
+        }
         let tps = match total {
             0 => 0,
             _ => total / time,
@@ -189,8 +193,8 @@ impl StaticsLog {
         let (memory_usage, cpu_percent) = get_system_usage().await;
 
         print!(
-            "\rTotal: {}, Commit: {}, TPS: {}, Memory Usage: {:.2} KB, Cpu Usage: {:.2}%",
-            total, commit, tps, memory_usage, cpu_percent
+            "\r{}---> Total: {}, Commit: {}, TPS: {}, Memory Usage: {:.2} KB, Cpu Usage: {:.2}%",
+            name, total, commit, tps, memory_usage, cpu_percent
         );
         std::io::stdout().flush().unwrap();
     }

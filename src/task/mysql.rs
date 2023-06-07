@@ -1,18 +1,14 @@
 use async_trait::async_trait;
-use mysql_async::{prelude::*, Conn, Params, TxOpts, Value};
-use std::{
-    collections::HashMap,
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
+use mysql_async::{prelude::*, Conn, Params, Value};
+use std::{collections::HashMap, time::Duration};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{
-    column::{DataTypeEnum, OutputColumn},
+    column::OutputColumn,
     fake::get_fake_data,
-    log::{incr_log, ChannelStaticsLog, StaticsLogger},
+    log::{incr_log, register},
     output::Close,
-    shutdown::{self, Shutdown},
+    shutdown::Shutdown,
 };
 
 #[derive(Debug)]
@@ -53,7 +49,7 @@ impl MysqlTask {
         let name2 = name.clone();
         MysqlTask {
             name,
-            batch,
+            batch: 2000,
             count,
             shutdown_sender,
             completed: Mutex::new(()),
@@ -61,7 +57,7 @@ impl MysqlTask {
             columns,
             table,
             database,
-            executor: MysqlTaskExecutor::new(conn, batch, count, data2, table2, columns2, name2),
+            executor: MysqlTaskExecutor::new(conn, 2000, count, data2, table2, columns2, name2),
         }
     }
 
@@ -81,6 +77,7 @@ impl MysqlTask {
     }
 
     pub async fn run(&mut self) -> crate::Result<()> {
+        register(&self.name.clone()).await;
         println!("{} will running...", self.name);
         let (columns_name, columns_name_val) = self.get_columns_name();
 
@@ -93,7 +90,6 @@ impl MysqlTask {
                     continue;
                 }
             };
-            incr_log(&self.name, self.batch, 1).await;
 
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
@@ -124,7 +120,7 @@ impl MysqlTaskExecutor {
     ) -> Self {
         Self {
             conn,
-            batch: 1000,
+            batch,
             columns,
             count,
             database,
@@ -161,6 +157,7 @@ impl MysqlTaskExecutor {
             .batch(&mut self.conn)
             .await
             .expect("执行sql失败");
-        
+
+        incr_log(&self.task_name, self.batch, 1).await;
     }
 }

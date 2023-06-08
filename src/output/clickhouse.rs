@@ -1,6 +1,9 @@
 use clickhouse::Client;
 
-use crate::{cli::Cli, task::clickhouse::ClickHouseTask};
+use crate::{
+    core::{cli::Cli, log::StaticsLogger},
+    task::clickhouse::ClickHouseTask,
+};
 
 impl ClickHouseOutput {
     pub fn new(cli: Cli) -> Self {
@@ -107,8 +110,9 @@ pub struct ClickHouseArgs {
     pub count: usize,
 }
 
-use super::{super::log::StaticsLogger, Close, OutputContext};
+use super::{Close, OutputContext};
 
+#[derive(Debug)]
 pub struct ClickHouseOutput {
     pub logger: StaticsLogger,
 

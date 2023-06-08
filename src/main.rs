@@ -1,39 +1,29 @@
-use std::path::PathBuf;
-use crate::{
-    log::{StaticsLogFactory, StaticsLogger},
-    output::mysql::MysqlOutput,
-};
-use error::Result;
-use cli::Cli;
-use log::STATICS_LOGGER;
+use crate::core::cli::Cli;
+use crate::core::error::Result;
+use crate::core::log::{StaticsLogger, STATICS_LOGGER};
+use crate::core::parse::parse_output;
+use crate::output::mysql::MysqlOutput;
 use output::Output;
+use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio::signal;
 // use tracing::{error, info, Level};
 // use tracing_subscriber::FmtSubscriber;
-pub mod check;
-pub mod cli;
-pub mod column;
-pub mod fake;
-pub mod log;
+
+pub mod core;
+pub mod macros;
 pub mod model;
 pub mod output;
-pub mod shutdown;
 pub mod task;
 pub mod util;
-pub mod schema;
-pub mod parse;
-pub mod error;
-pub mod macros;
-
 #[macro_use]
 extern crate lazy_static;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut cli = Cli::from_args();
+    let mut cli = core::cli::Cli::from_args();
 
-    check::check_args(&mut cli);
+    core::check::check_args(&mut cli);
 
     println!("pid {}, process starting... ", std::process::id());
 
@@ -41,8 +31,6 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-
 
 use output::{Close, DelegatedOutput, OutputContext};
 
@@ -55,12 +43,10 @@ pub fn create_context(cli: &Cli) -> OutputContext {
 /// 创建代理输出任务
 pub async fn create_delegate_output(cli: Cli) -> (DelegatedOutput, OutputContext) {
     let cli_args = cli.clone();
-    // 初始化日志
-    let interval = cli.interval;
+    // 获取所有输出任务
+    let (outputs, interval, concurrency) = parse_output(cli_args).expect("解析输出任务失败");
 
     STATICS_LOGGER.lock().await.interval(interval);
-    // 获取所有输出任务
-    let outputs: Vec<Box<dyn output::Output>> = parse_output(cli_args);
 
     let context = create_context(&cli);
 

@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use crate::column::{DataTypeEnum, OutputColumn};
-
 use chrono::DateTime;
 use fake::faker::address::raw::*;
 use fake::faker::internet::raw::*;
@@ -153,14 +151,19 @@ pub fn get_random_time_en() -> time::Time {
     Time(EN).fake()
 }
 
-pub fn get_random_date_between_zh(start: time::OffsetDateTime, end: time::OffsetDateTime) -> time::OffsetDateTime {
+pub fn get_random_date_between_zh(
+    start: time::OffsetDateTime,
+    end: time::OffsetDateTime,
+) -> time::OffsetDateTime {
     DateTimeBetween(start, end).fake()
 }
 
 pub fn get_random_timestamp() -> time::OffsetDateTime {
-    get_random_date_between_zh(time::OffsetDateTime::UNIX_EPOCH, datetime!(2038-01-19 03:14:07 UTC))
+    get_random_date_between_zh(
+        time::OffsetDateTime::UNIX_EPOCH,
+        datetime!(2038-01-19 03:14:07 UTC),
+    )
 }
-
 
 pub fn get_random_datetime_zh() -> time::OffsetDateTime {
     DateTime(ZH_CN).fake()
@@ -176,6 +179,8 @@ pub fn get_random_uuid() -> String {
 
 use fake::faker::lorem::raw::*;
 use time::macros::datetime;
+
+use crate::model::column::{DataTypeEnum, OutputColumn};
 
 pub fn get_random_word_en() -> String {
     Word(EN).fake()
@@ -234,107 +239,194 @@ pub fn get_fake_data_mysql(columns: &Vec<OutputColumn>) -> Params {
         let data_type = colum.data_type();
         match data_type {
             DataTypeEnum::UInt8 => {
-                value.entry(name).or_insert(mysql_common::Value::UInt(get_random_u8() as u64));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::UInt(get_random_u8() as u64));
             }
             DataTypeEnum::UInt16 => {
-                value.entry(name).or_insert(mysql_common::Value::UInt(get_random_u16() as u64));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::UInt(get_random_u16() as u64));
             }
             DataTypeEnum::UInt32 => {
-                value.entry(name).or_insert(mysql_common::Value::UInt(get_random_u32() as u64));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::UInt(get_random_u32() as u64));
             }
             DataTypeEnum::UInt64 => {
-                value.entry(name).or_insert(mysql_common::Value::UInt(get_random_u64()));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::UInt(get_random_u64()));
             }
             DataTypeEnum::Int8 => {
-                value.entry(name).or_insert(mysql_common::Value::Int(get_random_i8() as i64));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Int(get_random_i8() as i64));
             }
             DataTypeEnum::Int16 => {
-                value.entry(name).or_insert(mysql_common::Value::Int(get_random_i16() as i64));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Int(get_random_i16() as i64));
             }
             DataTypeEnum::Int32 => {
-                value.entry(name).or_insert(mysql_common::Value::Int(get_random_i32() as i64));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Int(get_random_i32() as i64));
             }
             DataTypeEnum::Int64 => {
-                value.entry(name).or_insert(mysql_common::Value::Int(get_random_i64()));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Int(get_random_i64()));
             }
             DataTypeEnum::Float32 => {
-                value.entry(name).or_insert(mysql_common::Value::Float(get_random_f32()));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Float(get_random_f32()));
             }
             DataTypeEnum::Float64 => {
-                value.entry(name).or_insert(mysql_common::Value::Double(get_random_f64()));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Double(get_random_f64()));
             }
             DataTypeEnum::String => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_string().into_bytes()));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Bytes(get_random_string().into_bytes()));
             }
             DataTypeEnum::FixedString => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_string().into_bytes()));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Bytes(get_random_string().into_bytes()));
             }
             DataTypeEnum::Date => {
                 let date = get_random_datetime_zh();
-                value.entry(name).or_insert(mysql_common::Value::Date(date.year() as u16, date.month().into() ,date.day(), date.hour(), date.minute() , date.second() , date.microsecond()));
+                value.entry(name).or_insert(mysql_common::Value::Date(
+                    date.year() as u16,
+                    date.month().into(),
+                    date.day(),
+                    date.hour(),
+                    date.minute(),
+                    date.second(),
+                    date.microsecond(),
+                ));
             }
             DataTypeEnum::Time => {
                 let time = get_random_time_zh();
-                value.entry(name).or_insert(mysql_common::Value::Time(true,0, time.hour(), time.minute(), time.second(), time.microsecond()));
+                value.entry(name).or_insert(mysql_common::Value::Time(
+                    true,
+                    0,
+                    time.hour(),
+                    time.minute(),
+                    time.second(),
+                    time.microsecond(),
+                ));
             }
             DataTypeEnum::Timestamp => {
                 let date = get_random_timestamp();
-                value.entry(name).or_insert(mysql_common::Value::Date(date.year() as u16, date.month().into() ,date.day(), date.hour(), date.minute() , date.second() , date.microsecond()));
+                value.entry(name).or_insert(mysql_common::Value::Date(
+                    date.year() as u16,
+                    date.month().into(),
+                    date.day(),
+                    date.hour(),
+                    date.minute(),
+                    date.second(),
+                    date.microsecond(),
+                ));
             }
             DataTypeEnum::DateTime => {
                 let date = get_random_timestamp();
-                value.entry(name).or_insert(mysql_common::Value::Date(date.year() as u16, date.month().into() ,date.day(), date.hour(), date.minute() , date.second() , date.microsecond()));
+                value.entry(name).or_insert(mysql_common::Value::Date(
+                    date.year() as u16,
+                    date.month().into(),
+                    date.day(),
+                    date.hour(),
+                    date.minute(),
+                    date.second(),
+                    date.microsecond(),
+                ));
             }
             DataTypeEnum::DateTime64 => {
                 let date = get_random_datetime_zh();
-                value.entry(name).or_insert(mysql_common::Value::Date(date.year() as u16, date.month().into() ,date.day(), date.hour(), date.minute() , date.second() , date.microsecond()));
+                value.entry(name).or_insert(mysql_common::Value::Date(
+                    date.year() as u16,
+                    date.month().into(),
+                    date.day(),
+                    date.hour(),
+                    date.minute(),
+                    date.second(),
+                    date.microsecond(),
+                ));
             }
             DataTypeEnum::Nullable => {
                 value.entry(name).or_insert(mysql_common::Value::NULL);
             }
             DataTypeEnum::UUID => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_uuid().into_bytes()));
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::Bytes(get_random_uuid().into_bytes()));
             }
             DataTypeEnum::IPv4 => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_ipv4_zh().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_ipv4_zh().into_bytes(),
+                ));
             }
             DataTypeEnum::IPv6 => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_ipv4_zh().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_ipv4_zh().into_bytes(),
+                ));
             }
             DataTypeEnum::Email => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_free_email().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_free_email().into_bytes(),
+                ));
             }
             DataTypeEnum::Password => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_password().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_password().into_bytes(),
+                ));
             }
             DataTypeEnum::Username => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_username().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_username().into_bytes(),
+                ));
             }
             DataTypeEnum::Word => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_word_zh().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_word_zh().into_bytes(),
+                ));
             }
             DataTypeEnum::Sentence => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_sentence_zh(1..3).into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_sentence_zh(1..3).into_bytes(),
+                ));
             }
             DataTypeEnum::Paragraph => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_paragraph_zh(1..3).into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_paragraph_zh(1..3).into_bytes(),
+                ));
             }
             DataTypeEnum::City => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_city_zh().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_city_zh().into_bytes(),
+                ));
             }
             DataTypeEnum::Country => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_country_zh().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_country_zh().into_bytes(),
+                ));
             }
             DataTypeEnum::Phone => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(get_random_phone_zh().into_bytes()));
+                value.entry(name).or_insert(mysql_common::Value::Bytes(
+                    get_random_phone_zh().into_bytes(),
+                ));
             }
             DataTypeEnum::Unknown => {
                 value.entry(name).or_insert(mysql_common::Value::NULL);
             }
         }
     }
-    
-    // let values = value.values().cloned().collect::<Vec<mysql_common::Value>>();    
+
+    // let values = value.values().cloned().collect::<Vec<mysql_common::Value>>();
     // let sep = std::iter::repeat(", ");
     // let ps = values
     //     .iter()
@@ -347,7 +439,6 @@ pub fn get_fake_data_mysql(columns: &Vec<OutputColumn>) -> Params {
 
     return Params::Named(value);
 }
-
 
 /// 通用生成测试数据方法
 pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Json {

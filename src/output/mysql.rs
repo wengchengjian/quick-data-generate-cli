@@ -1,22 +1,20 @@
 use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::{atomic::AtomicBool, Arc};
-use std::time::Duration;
 use std::vec;
-use tokio::join;
 use tokio::sync::{broadcast, mpsc, Semaphore};
 
-use crate::cli::Cli;
-use crate::column::{DataTypeEnum, OutputColumn};
-use crate::error::{Result, Error, IoError};
-use crate::log::{self, ChannelStaticsLog};
-use crate::schema::{OutputSchema, ChannelSchema};
-use crate::shutdown::Shutdown;
+use crate::core::cli::Cli;
+use crate::core::error::{Error, IoError, Result};
+use crate::core::shutdown::Shutdown;
+use crate::model::column::{DataTypeEnum, OutputColumn};
+use crate::model::schema::{ChannelSchema, OutputSchema};
 use crate::task::mysql::MysqlTask;
 
 impl MysqlOutput {
-
     pub fn connect(&self) -> Result<Pool> {
         //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
@@ -70,7 +68,8 @@ impl MysqlOutput {
                     data_type: DataTypeEnum::from_string(column.Type.clone()).unwrap(),
                 };
             })
-            .await.map_err(|err| Error::Other(err.into()))?;
+            .await
+            .map_err(|err| Error::Other(err.into()))?;
         Ok(res)
     }
 }
@@ -86,21 +85,35 @@ pub struct MysqlColumnDefine {
 }
 
 impl MysqlArgs {
-    pub fn from_value(meta: serde_json::Value, channel: ChannelSchema)-> Result<MysqlArgs> {
+    pub fn from_value(meta: serde_json::Value, channel: ChannelSchema) -> Result<MysqlArgs> {
         Ok(MysqlArgs {
-            host: meta["host"].as_str().ok_or(Error::Io(IoError::ArgNotFound("host".to_string())))?.to_string(),
+            host: meta["host"]
+                .as_str()
+                .ok_or(Error::Io(IoError::ArgNotFound("host".to_string())))?
+                .to_string(),
             port: meta["port"].as_u64().unwrap_or(3306) as u16,
-            user: meta["user"].as_str().ok_or(Error::Io(IoError::ArgNotFound("user".to_string())))?.to_string(),
-            password: meta["password"].as_str().ok_or(Error::Io(IoError::ArgNotFound("password".to_string())))?.to_string(),
-            database: meta["database"].as_str().ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?.to_string(),
+            user: meta["user"]
+                .as_str()
+                .ok_or(Error::Io(IoError::ArgNotFound("user".to_string())))?
+                .to_string(),
+            password: meta["password"]
+                .as_str()
+                .ok_or(Error::Io(IoError::ArgNotFound("password".to_string())))?
+                .to_string(),
+            database: meta["database"]
+                .as_str()
+                .ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?
+                .to_string(),
 
-            table: meta["table"].as_str().ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?.to_string(),
+            table: meta["table"]
+                .as_str()
+                .ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?
+                .to_string(),
             batch: channel.batch,
             count: channel.count,
-            concurrency: channel.concurrency
-})
+            concurrency: channel.concurrency,
+        })
     }
-
 }
 
 impl TryInto<MysqlArgs> for Cli {
@@ -110,14 +123,26 @@ impl TryInto<MysqlArgs> for Cli {
         Ok(MysqlArgs {
             host: self.host,
             port: self.port.unwrap_or(3306),
-            user: self.user.ok_or(Error::Io(IoError::ArgNotFound("user".to_string())))?.to_string(),
-            password: self.password.ok_or(Error::Io(IoError::ArgNotFound("password".to_string())))?.to_string(),
-            database: self.database.ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?.to_string(),
+            user: self
+                .user
+                .ok_or(Error::Io(IoError::ArgNotFound("user".to_string())))?
+                .to_string(),
+            password: self
+                .password
+                .ok_or(Error::Io(IoError::ArgNotFound("password".to_string())))?
+                .to_string(),
+            database: self
+                .database
+                .ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?
+                .to_string(),
 
-            table: self.table.ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?.to_string(),
+            table: self
+                .table
+                .ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?
+                .to_string(),
             batch: self.batch.unwrap_or(5000),
             count: self.count.unwrap_or(0),
-            concurrency: self.concurrency.unwrap_or(1)
+            concurrency: self.concurrency.unwrap_or(1),
         })
     }
 }
@@ -126,15 +151,33 @@ impl TryFrom<OutputSchema> for MysqlOutput {
     type Error = Error;
 
     fn try_from(value: OutputSchema) -> std::result::Result<Self, Self::Error> {
-        Ok(MysqlOutput{
+        Ok(MysqlOutput {
             name: "默认mysql输出".to_string(),
             args: MysqlArgs::from_value(value.meta, value.channel)?,
             tasks: vec![],
             shutdown: AtomicBool::new(false),
+            columns: get_columns_from_value(&value.columns)
         })
     }
 }
 
+/// 从schema中获取columns定义，允许类型未知
+pub fn get_columns_from_value(value: &serde_json::Value) -> Vec<OutputColumn>{
+    if let Some(map) = value.as_object() {
+        return map.into_iter().map(|(key, value)| {
+            OutputColumn {
+                name: key.clone(),
+                data_type: match DataTypeEnum::from_str(value.as_str().unwrap()) {
+                    Ok(dt) => dt,
+                    Err(_) => DataTypeEnum::Unknown,
+                },
+            }
+        }).collect();
+
+    } else {
+        vec![]
+    }
+}
 
 use async_trait::async_trait;
 
@@ -166,9 +209,12 @@ impl super::Output for MysqlOutput {
             task_num += 1;
             let task_name = format!("{}-task-{}", self.name, task_num);
 
-            let conn = pool.get_conn().await.map_err(|err| Error::Other(err.into()))?;
+            let conn = pool
+                .get_conn()
+                .await
+                .map_err(|err| Error::Other(err.into()))?;
 
- let columns = columns.clone();
+            let columns = columns.clone();
             let database = self.args.database.clone();
             let table = self.args.table.clone();
 
@@ -233,19 +279,22 @@ pub struct MysqlArgs {
 
     pub count: usize,
 
-    pub concurrency: usize
+    pub concurrency: usize,
 }
 
-use super::{super::log::StaticsLogger, Close, OutputContext};
+use super::{Close, OutputContext};
 
+#[derive(Debug)]
 pub struct MysqlOutput {
     pub name: String,
 
     pub args: MysqlArgs,
 
+    pub columns: Vec<OutputColumn>,
+
     pub tasks: Vec<MysqlTask>,
 
-    pub shutdown: AtomicBool,
+    pub shutdown: AtomicBool
 }
 
 impl TryFrom<Cli> for MysqlOutput {
@@ -257,6 +306,7 @@ impl TryFrom<Cli> for MysqlOutput {
             args: value.try_into()?,
             tasks: vec![],
             shutdown: AtomicBool::new(false),
+            columns: vec![]
         };
 
         Ok(res)
@@ -286,6 +336,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "test mysql connection sometimes, not necessarily "]
     fn test_mysql_conn() {
         let res = aw!(mysql_conn());
         assert_eq!(res.unwrap(), ());
@@ -331,6 +382,8 @@ mod tests {
 
         let pool = mysql_async::Pool::new(database_url);
         let mut conn = pool.get_conn().await?;
+
+        r"drop table payment".with(()).run(&mut conn);
 
         // Create a temporary table
         r"CREATE TABLE IF NOT EXISTS payment (

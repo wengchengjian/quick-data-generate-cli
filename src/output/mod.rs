@@ -1,7 +1,6 @@
-use super::{StaticsLogFactory, StaticsLogger};
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
 use core::fmt::Debug;
+use serde::{Deserialize, Serialize};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Semaphore;
 
@@ -17,7 +16,7 @@ pub trait Close {
 }
 
 #[async_trait]
-pub trait Output: Send + Close + Sync {
+pub trait Output: Send + Close + Sync + Debug {
     /// 通用初始化逻辑
     fn init(&mut self, context: &mut OutputContext) {}
 
@@ -41,6 +40,7 @@ pub trait Output: Send + Close + Sync {
     async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()>;
 }
 
+#[derive(Debug)]
 pub struct DelegatedOutput {
     outputs: Vec<Box<dyn Output>>,
     name: String,
@@ -105,7 +105,7 @@ impl OutputContext {
     }
 }
 
-#[derive(Debug, Clone, Copy,Serialize,Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum OutputEnum {
     // ClickHouse,
     Mysql,
@@ -125,7 +125,9 @@ impl FromStr for OutputEnum {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.to_lowercase();
 
+        let s = s.as_str().to_lowercase();
         let s = s.as_str();
+
         match s {
             // "clickhouse" => Ok(OutputEnum::ClickHouse),
             "mysql" => Ok(OutputEnum::Mysql),

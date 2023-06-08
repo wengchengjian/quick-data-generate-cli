@@ -1,3 +1,5 @@
+use super::cli::Cli;
+
 /// 单次默认提交数量
 pub static DEFAULT_BATCH_SIZE: usize = 5_0000;
 
@@ -20,7 +22,7 @@ pub static MIN_INTERVAL: usize = 1;
 pub static MIN_THREAD_SIZE: usize = 1;
 
 /// 检查命令行参数，填充默认值
-pub fn check_args(cli: &mut super::Cli) {
+pub fn check_args(cli: &mut Cli) {
     // 检查配置的线程数，建议不超过cpu核心数
     check_thread_num(cli);
     // 检查单次批量提交的数量
@@ -29,24 +31,28 @@ pub fn check_args(cli: &mut super::Cli) {
     check_interval(cli);
 }
 
-pub fn check_interval(cli: &mut super::Cli) {
+pub fn check_interval(cli: &mut Cli) {
     let interval = cli.interval;
+
     match interval {
-        val => {
-            if val < MIN_INTERVAL {
+        Some(interval) => {
+            if interval < MIN_INTERVAL {
                 println!("interval must greater than {MIN_INTERVAL}");
-                cli.interval = MIN_INTERVAL;
+                cli.interval.insert(interval);
             }
 
-            if val > MAX_INTERVAL {
+            if interval > MAX_INTERVAL {
                 println!("interval must less than {MAX_INTERVAL}");
-                cli.interval = MAX_INTERVAL;
+                cli.interval.insert(MAX_INTERVAL);
             }
+        }
+        None => {
+            cli.interval.insert(DEFAULT_INTERVAL);
         }
     }
 }
 
-pub fn check_thread_num(cli: &mut super::Cli) {
+pub fn check_thread_num(cli: &mut Cli) {
     let num_threads = num_cpus::get();
 
     let th = cli.concurrency;
@@ -54,7 +60,7 @@ pub fn check_thread_num(cli: &mut super::Cli) {
         Some(val) => {
             if val < MIN_THREAD_SIZE {
                 println!("threads must greater than {MIN_THREAD_SIZE}");
-                cli.concurrency = Some(num_threads);
+                cli.concurrency = Some(MIN_THREAD_SIZE);
             }
 
             if val > num_threads {
@@ -63,12 +69,12 @@ pub fn check_thread_num(cli: &mut super::Cli) {
             }
         }
         None => {
-            cli.concurrency = Some(num_threads);
+            cli.concurrency = Some(MIN_THREAD_SIZE);
         }
     }
 }
 
-pub fn check_batch_size(cli: &mut super::Cli) {
+pub fn check_batch_size(cli: &mut Cli) {
     let batch = cli.batch;
     match batch {
         Some(val) => {

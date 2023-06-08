@@ -1,26 +1,16 @@
 use async_trait::async_trait;
 use clickhouse::{inserter::Inserter, Client};
 use serde_json::Value;
-use std::{
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
-use tokio::sync::Mutex;
 
-use crate::{log::StaticsLogger, output::Close};
+use crate::{core::log::StaticsLogger, output::Close};
 
+#[derive(Debug)]
 pub struct ClickHouseTask {
     pub name: String,
-    pub client: Client,
-    pub batch: usize,
-    pub count: usize,
-    pub completed: Mutex<()>,
-    pub shutdown: AtomicBool,
 }
 #[async_trait]
 impl Close for ClickHouseTask {
     async fn close(&mut self) -> crate::Result<()> {
-        self.shutdown.store(true, Ordering::SeqCst);
 
         Ok(())
     }
@@ -30,11 +20,6 @@ impl ClickHouseTask {
     pub fn new(name: String, client: Client, batch: usize, count: usize) -> ClickHouseTask {
         ClickHouseTask {
             name,
-            client,
-            batch,
-            count,
-            completed: Mutex::new(()),
-            shutdown: AtomicBool::new(false),
         }
     }
 

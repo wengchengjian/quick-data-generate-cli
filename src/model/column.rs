@@ -1,6 +1,8 @@
 use std::str::FromStr;
 
+use crate::core::error::{Error, IoError, Result};
 use fake::locales::Data;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use time::{Date, OffsetDateTime};
 
@@ -64,22 +66,20 @@ pub enum DataTypeEnum {
 }
 
 impl DataTypeEnum {
-    pub fn from_string(str: String) -> crate::Result<Self> {
+    pub fn from_string(str: String) -> Result<Self> {
         let data_type = DataTypeEnum::from_str(str.as_str())?;
         Ok(data_type)
     }
 }
-use regex::Regex;
-
-use crate::error::{Error, IoError};
 
 lazy_static! {
-    pub static ref DATA_TYPE_REGEX: Regex = Regex::new(r"(?P<tp>\w+)(\((\d+)\))?\s*(?P<ex>\w*)").unwrap();
+    pub static ref DATA_TYPE_REGEX: Regex =
+        Regex::new(r"(?P<tp>\w+)(\((\d+)\))?\s*(?P<ex>\w*)").unwrap();
 }
 
 impl FromStr for DataTypeEnum {
     type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let s: String = s.to_uppercase();
         let match_str = s.as_str();
         let caps = DATA_TYPE_REGEX.captures(match_str).unwrap();
@@ -87,7 +87,7 @@ impl FromStr for DataTypeEnum {
 
         if &caps["ex"].len() > &0 {
             tp_str = format!("{} {}", &caps["tp"], &caps["ex"]);
-        } 
+        }
         match tp_str.as_str() {
             "TINYINT UNSIGNED" => Ok(DataTypeEnum::UInt8),
             "TINYINT" => Ok(DataTypeEnum::Int8),
@@ -114,7 +114,15 @@ impl FromStr for DataTypeEnum {
             "MEDIUMBLOB" => Ok(DataTypeEnum::String),
             "MEDIUMTEXT" => Ok(DataTypeEnum::String),
             "LONGBLOB" => Ok(DataTypeEnum::String),
-            "LONGTEXT" => Ok(DataTypeEnum::String),
+            "PASSWORD" => Ok(DataTypeEnum::Password),
+            "USERNAME" => Ok(DataTypeEnum::Username),
+            "EMAIL" => Ok(DataTypeEnum::Email),
+            "PHONE" => Ok(DataTypeEnum::Phone),
+            "IPV4" => Ok(DataTypeEnum::IPv4),
+            "IPV6" => Ok(DataTypeEnum::IPv6),
+            "UUID" => Ok(DataTypeEnum::UUID),
+            "CITY" => Ok(DataTypeEnum::City),
+            "COUNTRY" => Ok(DataTypeEnum::Country),
             at => Err(Error::Io(IoError::UnkownTypeError(at.to_string()))),
         }
     }

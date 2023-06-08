@@ -4,11 +4,13 @@ use std::{collections::HashMap, time::Duration};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{
-    column::OutputColumn,
-    fake::{get_fake_data, get_fake_data_mysql},
-    log::{incr_log, register},
+    core::{
+        fake::get_fake_data_mysql,
+        log::{incr_log, register},
+        shutdown::Shutdown,
+    },
+    model::column::OutputColumn,
     output::Close,
-    shutdown::Shutdown,
 };
 
 #[derive(Debug)]
@@ -143,11 +145,8 @@ impl MysqlTaskExecutor {
             "INSERT INTO {}.{} ({}) VALUES ({})",
             self.database, self.table, columns_name, columns_name_val
         );
-        
-        if let Err(err) = insert_header
-        .with(params)
-        .batch(&mut self.conn)
-        .await  {
+
+        if let Err(err) = insert_header.with(params).batch(&mut self.conn).await {
             println!("insert error: {:?}", err);
         }
 

@@ -1,7 +1,9 @@
+use std::path::PathBuf;
 use crate::{
     log::{StaticsLogFactory, StaticsLogger},
     output::mysql::MysqlOutput,
 };
+use error::Result;
 use cli::Cli;
 use log::STATICS_LOGGER;
 use output::Output;
@@ -19,11 +21,13 @@ pub mod output;
 pub mod shutdown;
 pub mod task;
 pub mod util;
+pub mod schema;
+pub mod parse;
+pub mod error;
+pub mod macros;
 
 #[macro_use]
 extern crate lazy_static;
-
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -38,25 +42,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-pub fn parse_output(cli: Cli) -> Vec<Box<dyn output::Output>> {
-    let output_enum = cli.output;
 
-    let output = match output_enum {
-        // output::OutputEnum::ClickHouse => {
-        //     // 初始化输出源
-        //     let mut output = ClickHouseOutput::new(cli);
-        //     output
-        // }
-        output::OutputEnum::Mysql => MysqlOutput::new(cli),
-        //        output::OutputEnum::Kafka => todo!(),
-        //        output::OutputEnum::ElasticSearch => todo!(),
-        //        output::OutputEnum::CSV => todo!(),
-        //        output::OutputEnum::SqlServer => todo!(),
-    };
-
-    let res = Box::new(output);
-    vec![res]
-}
 
 use output::{Close, DelegatedOutput, OutputContext};
 
@@ -70,7 +56,7 @@ pub fn create_context(cli: &Cli) -> OutputContext {
 pub async fn create_delegate_output(cli: Cli) -> (DelegatedOutput, OutputContext) {
     let cli_args = cli.clone();
     // 初始化日志
-    let interval = cli.interval.unwrap_or(5);
+    let interval = cli.interval;
 
     STATICS_LOGGER.lock().await.interval(interval);
     // 获取所有输出任务

@@ -9,28 +9,22 @@ use tokio::sync::{broadcast, mpsc, Semaphore};
 
 use crate::cli::Cli;
 use crate::column::{DataTypeEnum, OutputColumn};
+use crate::error::{Result, Error, IoError};
 use crate::log::{self, ChannelStaticsLog};
+use crate::schema::{OutputSchema, ChannelSchema};
 use crate::shutdown::Shutdown;
 use crate::task::mysql::MysqlTask;
 
 impl MysqlOutput {
-    pub fn new(cli: Cli) -> Self {
-        Self {
-            name: "mysql".into(),
-            args: cli.into(),
-            tasks: vec![],
-            shutdown: AtomicBool::new(false),
-        }
-    }
 
-    pub fn connect(&self) -> crate::Result<Pool> {
+    pub fn connect(&self) -> Result<Pool> {
         //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
             "mysql://{}:{}@{}:{}/{}",
             self.args.user, self.args.password, self.args.host, self.args.port, self.args.database
         );
 
-        let database_url = Opts::from_url(&url)?;
+        let database_url = Opts::from_url(&url).map_err(|err| Error::Other(err.into()))?;
 
         let pool = Pool::new(database_url);
 
@@ -42,7 +36,7 @@ impl MysqlOutput {
         conn: Conn,
         database: &str,
         table: &str,
-    ) -> crate::Result<Vec<OutputColumn>> {
+    ) -> Result<Vec<OutputColumn>> {
         let sql = format!("desc {}.{}", database, table);
         let mut conn = conn;
         let res = sql
@@ -76,7 +70,7 @@ impl MysqlOutput {
                     data_type: DataTypeEnum::from_string(column.Type.clone()).unwrap(),
                 };
             })
-            .await?;
+            .await.map_err(|err| Error::Other(err.into()))?;
         Ok(res)
     }
 }
@@ -91,21 +85,56 @@ pub struct MysqlColumnDefine {
     pub Extra: String,
 }
 
-impl Into<MysqlArgs> for Cli {
-    fn into(self) -> MysqlArgs {
-        MysqlArgs {
+impl MysqlArgs {
+    pub fn from_value(meta: serde_json::Value, channel: ChannelSchema)-> Result<MysqlArgs> {
+        Ok(MysqlArgs {
+            host: meta["host"].as_str().ok_or(Error::Io(IoError::ArgNotFound("host".to_string())))?.to_string(),
+            port: meta["port"].as_u64().unwrap_or(3306) as u16,
+            user: meta["user"].as_str().ok_or(Error::Io(IoError::ArgNotFound("user".to_string())))?.to_string(),
+            password: meta["password"].as_str().ok_or(Error::Io(IoError::ArgNotFound("password".to_string())))?.to_string(),
+            database: meta["database"].as_str().ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?.to_string(),
+
+            table: meta["table"].as_str().ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?.to_string(),
+            batch: channel.batch,
+            count: channel.count,
+            concurrency: channel.concurrency
+})
+    }
+
+}
+
+impl TryInto<MysqlArgs> for Cli {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<MysqlArgs, Self::Error> {
+        Ok(MysqlArgs {
             host: self.host,
             port: self.port.unwrap_or(3306),
-            user: self.user.unwrap_or("root".to_string()),
-            password: self.password.unwrap_or("wcj520600".to_string()),
-            database: self.database.unwrap_or("tests".to_string()),
+            user: self.user.ok_or(Error::Io(IoError::ArgNotFound("user".to_string())))?.to_string(),
+            password: self.password.ok_or(Error::Io(IoError::ArgNotFound("password".to_string())))?.to_string(),
+            database: self.database.ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?.to_string(),
 
-            table: self.table.unwrap_or("UPGRADE_PACKET_INFO".to_string()),
+            table: self.table.ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?.to_string(),
             batch: self.batch.unwrap_or(5000),
             count: self.count.unwrap_or(0),
-        }
+            concurrency: self.concurrency.unwrap_or(1)
+        })
     }
 }
+
+impl TryFrom<OutputSchema> for MysqlOutput {
+    type Error = Error;
+
+    fn try_from(value: OutputSchema) -> std::result::Result<Self, Self::Error> {
+        Ok(MysqlOutput{
+            name: "默认mysql输出".to_string(),
+            args: MysqlArgs::from_value(value.meta, value.channel)?,
+            tasks: vec![],
+            shutdown: AtomicBool::new(false),
+        })
+    }
+}
+
 
 use async_trait::async_trait;
 
@@ -115,7 +144,7 @@ impl super::Output for MysqlOutput {
         return &self.name;
     }
 
-    async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
+    async fn run(&mut self, context: &mut OutputContext) -> Result<()> {
         // 获取连接池
         let pool = self.connect().expect("获取mysql连接失败!");
 
@@ -136,9 +165,10 @@ impl super::Output for MysqlOutput {
 
             task_num += 1;
             let task_name = format!("{}-task-{}", self.name, task_num);
-            let conn = pool.get_conn().await?;
 
-            let columns = columns.clone();
+            let conn = pool.get_conn().await.map_err(|err| Error::Other(err.into()))?;
+
+ let columns = columns.clone();
             let database = self.args.database.clone();
             let table = self.args.table.clone();
 
@@ -176,7 +206,7 @@ impl super::Output for MysqlOutput {
 
 #[async_trait]
 impl Close for MysqlOutput {
-    async fn close(&mut self) -> crate::Result<()> {
+    async fn close(&mut self) -> Result<()> {
         self.shutdown.store(true, Ordering::SeqCst);
         for task in &mut self.tasks {
             task.close().await?;
@@ -185,7 +215,7 @@ impl Close for MysqlOutput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MysqlArgs {
     pub host: String,
 
@@ -202,6 +232,8 @@ pub struct MysqlArgs {
     pub batch: usize,
 
     pub count: usize,
+
+    pub concurrency: usize
 }
 
 use super::{super::log::StaticsLogger, Close, OutputContext};
@@ -214,6 +246,21 @@ pub struct MysqlOutput {
     pub tasks: Vec<MysqlTask>,
 
     pub shutdown: AtomicBool,
+}
+
+impl TryFrom<Cli> for MysqlOutput {
+    type Error = Box<dyn std::error::Error>;
+
+    fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
+        let res = MysqlOutput {
+            name: "mysql".into(),
+            args: value.try_into()?,
+            tasks: vec![],
+            shutdown: AtomicBool::new(false),
+        };
+
+        Ok(res)
+    }
 }
 
 #[cfg(test)]
@@ -244,7 +291,7 @@ mod tests {
         assert_eq!(res.unwrap(), ());
     }
 
-    async fn mysql_conn() -> Result<()> {
+    async fn mysql_conn() -> std::result::Result<(), Box<dyn std::error::Error>> {
         #[derive(Debug, PartialEq, Eq, Clone)]
         struct Payment {
             customer_id: i32,

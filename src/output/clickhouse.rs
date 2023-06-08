@@ -4,7 +4,7 @@ use crate::{cli::Cli, task::clickhouse::ClickHouseTask};
 
 impl ClickHouseOutput {
     pub fn new(cli: Cli) -> Self {
-        let interval = cli.interval.unwrap_or(5);
+        let interval = cli.interval.unwrap_or(1);
         Self {
             name: "clickhouse".into(),
             interval,

@@ -71,12 +71,14 @@ impl DataTypeEnum {
 }
 use regex::Regex;
 
+use crate::error::{Error, IoError};
+
 lazy_static! {
     pub static ref DATA_TYPE_REGEX: Regex = Regex::new(r"(?P<tp>\w+)(\((\d+)\))?\s*(?P<ex>\w*)").unwrap();
 }
 
 impl FromStr for DataTypeEnum {
-    type Err = Box<dyn std::error::Error>;
+    type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s: String = s.to_uppercase();
         let match_str = s.as_str();
@@ -113,7 +115,7 @@ impl FromStr for DataTypeEnum {
             "MEDIUMTEXT" => Ok(DataTypeEnum::String),
             "LONGBLOB" => Ok(DataTypeEnum::String),
             "LONGTEXT" => Ok(DataTypeEnum::String),
-            _ => Ok(DataTypeEnum::Unknown),
+            at => Err(Error::Io(IoError::UnkownTypeError(at.to_string()))),
         }
     }
 }

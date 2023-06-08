@@ -32,19 +32,16 @@ pub fn check_args(cli: &mut super::Cli) {
 pub fn check_interval(cli: &mut super::Cli) {
     let interval = cli.interval;
     match interval {
-        Some(val) => {
+        val => {
             if val < MIN_INTERVAL {
                 println!("interval must greater than {MIN_INTERVAL}");
-                cli.interval = Some(MIN_INTERVAL);
+                cli.interval = MIN_INTERVAL;
             }
 
             if val > MAX_INTERVAL {
                 println!("interval must less than {MAX_INTERVAL}");
-                cli.interval = Some(MAX_INTERVAL);
+                cli.interval = MAX_INTERVAL;
             }
-        }
-        None => {
-            cli.interval = Some(DEFAULT_INTERVAL);
         }
     }
 }

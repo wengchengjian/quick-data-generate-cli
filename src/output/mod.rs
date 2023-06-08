@@ -1,5 +1,6 @@
 use super::{StaticsLogFactory, StaticsLogger};
 use async_trait::async_trait;
+use serde::{Serialize, Deserialize};
 use core::fmt::Debug;
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Semaphore;
@@ -104,7 +105,7 @@ impl OutputContext {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy,Serialize,Deserialize)]
 pub enum OutputEnum {
     // ClickHouse,
     Mysql,

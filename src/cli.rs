@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use structopt::StructOpt;
 
 use crate::output::OutputEnum;
@@ -31,6 +33,9 @@ pub struct Cli {
 
     #[structopt(long)]
     pub count: Option<usize>,
+
+    #[structopt(long)]
+    pub schema: Option<PathBuf>,
 
     #[structopt(short, long)]
     pub interval: Option<usize>,

@@ -355,6 +355,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
+ "thiserror",
  "time 0.3.21",
  "tokio",
  "tokio-test",

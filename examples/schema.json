@@ -1,0 +1,53 @@
+{
+    "outputs":{
+        "mysql-output": {
+            // 输出类型
+            "output": "mysql",
+            
+            "meta": {
+                // 主机
+                "host": "127.0.0.1",
+                // 端口
+                "port": 3306,
+                // 数据库
+                "database": "tests",
+                // 表名
+                "table": "BFC_TSA_PACKET_INFO",
+                // 用户
+                "user": "root",
+                // 密码
+                "password": "bfcdb@123",
+            },
+            "columns": {
+                "PACKET_ID": "bigint unsigned",
+                "PACKET_NAME": "String",
+                "DEVICE_ID": "bigint unsigned",
+                "LINK_ID": "int unsigned",
+                "CENTER_ID": "int unsigned",
+                "CUSTOMER_ID": "bigint unsigned",
+                "data_source_id": "bigint unsigned",
+                "user_id": "bigint unsigned",
+                "password": "password",
+                "username": "username",
+                "email": "email",
+                "ip": "ipv4",
+                "phone": "phone",
+                "city": "city",
+                "country": "country",
+            },
+            "channel": {
+                // 批量提交数量
+                "batch": 2000,
+                // 当前输出并发
+                "concurrency": 2,
+                // 输出总数
+                "count": 10000,
+            }
+            
+        }
+    },
+    // 日志打印间隔
+    "interval": 5,
+    // 总并发数
+    "concurrency": 8
+}

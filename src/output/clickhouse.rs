@@ -2,7 +2,7 @@ use clickhouse::Client;
 
 use crate::{
     core::{cli::Cli, log::StaticsLogger},
-    task::clickhouse::ClickHouseTask,
+    task::clickhouse::ClickHouseTask, model::column::OutputColumn,
 };
 
 impl ClickHouseOutput {
@@ -14,6 +14,7 @@ impl ClickHouseOutput {
             args: cli.into(),
             logger: StaticsLogger::new(interval),
             tasks: vec![],
+            columns: vec![]
         }
     }
 
@@ -49,6 +50,12 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for ClickHouseOutput {
+
+
+    fn get_columns(&self) -> &Vec<OutputColumn> {
+        return &self.columns;
+    }
+
     fn name(&self) -> &str {
         return &self.name;
     }
@@ -123,4 +130,6 @@ pub struct ClickHouseOutput {
     pub args: ClickHouseArgs,
 
     pub tasks: Vec<ClickHouseTask>,
+
+    pub columns: Vec<OutputColumn>
 }

@@ -1,10 +1,8 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
 use crate::core::error::{Error, IoError, Result};
-use fake::locales::Data;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use time::{Date, OffsetDateTime};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OutputColumn {
@@ -17,6 +15,50 @@ impl OutputColumn {
         let name = name.to_string();
         let data_type = DataTypeEnum::from_str(data_type).unwrap();
         Self { name, data_type }
+    }
+
+    /// 返回column的map 映射
+    pub fn map_columns(columns: &Vec<OutputColumn>) -> HashMap<&str, &DataTypeEnum> {
+        columns
+            .iter()
+            .map(|column| (column.name.as_str(), &column.data_type))
+            .collect()
+    }
+
+    /// 从schema中获取columns定义，允许类型未知
+    pub fn get_columns_from_value(value: &serde_json::Value) -> Vec<OutputColumn> {
+        if let Some(map) = value.as_object() {
+            return map
+                .into_iter()
+                .map(|(key, value)| OutputColumn {
+                    name: key.clone(),
+                    data_type: match DataTypeEnum::from_str(value.as_str().unwrap()) {
+                        Ok(dt) => dt,
+                        Err(_) => DataTypeEnum::Unknown,
+                    },
+                })
+                .collect();
+        } else {
+            vec![]
+        }
+    }
+
+    /// 合并两个列数组,target中已经有的,以target为准
+    pub fn merge_columns(
+        source: &Vec<OutputColumn>,
+        target: &Vec<OutputColumn>,
+    ) -> Vec<OutputColumn> {
+        let mut c1 = OutputColumn::map_columns(source);
+        let c2 = OutputColumn::map_columns(target);
+
+        c1.extend(c2);
+
+        c1.into_iter()
+            .map(|(key, val)| OutputColumn {
+                name: key.to_string(),
+                data_type: val.clone(),
+            })
+            .collect()
     }
 }
 
@@ -125,5 +167,43 @@ impl FromStr for DataTypeEnum {
             "COUNTRY" => Ok(DataTypeEnum::Country),
             at => Err(Error::Io(IoError::UnkownTypeError(at.to_string()))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::core::parse::{parse_outputs_from_schema, parse_schema};
+
+    use super::*;
+
+    static SCHEMA_PATH: &'static str = "examples/schema2.json";
+    static SCHEMA_PATH2: &'static str = "examples/schema3.json";
+
+    #[test]
+    fn test_merge_columns() {
+        let path_buf = PathBuf::from(SCHEMA_PATH);
+
+        let schema = parse_schema(&path_buf).expect("解析schema文件失败");
+
+        let outputs1 = parse_outputs_from_schema(schema).expect("解析output失败");
+        let c1 = outputs1[0].get_columns();
+        let c2 = outputs1[1].get_columns();
+
+        let mut c3 = vec![];
+        if outputs1[0].name().eq("mysql-output") {
+            c3 = OutputColumn::merge_columns(c1, c2);
+
+        } else {
+            c3 = OutputColumn::merge_columns(c2, c1);
+        }
+
+        let c4m = OutputColumn::map_columns(&c3);
+        assert!((*c4m.get("PACKET_ID").unwrap()).eq(&DataTypeEnum::UInt64));
+        assert!((*c4m.get("PACKET_NAME").unwrap()).eq(&DataTypeEnum::String));
+        assert!((*c4m.get("ip").unwrap()).eq(&DataTypeEnum::IPv4));
+        assert!((*c4m.get("password").unwrap()).eq(&DataTypeEnum::String));
+        assert!((*c4m.get("username").unwrap()).eq(&DataTypeEnum::String));
     }
 }

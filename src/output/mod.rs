@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Semaphore;
 
+use crate::model::column::OutputColumn;
+
 pub mod clickhouse;
 pub mod csv;
 pub mod elasticsearch;
@@ -19,6 +21,8 @@ pub trait Close {
 pub trait Output: Send + Close + Sync + Debug {
     /// 通用初始化逻辑
     fn init(&mut self, context: &mut OutputContext) {}
+
+    fn get_columns(&self) -> &Vec<OutputColumn>;
 
     async fn before_run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
         Ok(())
@@ -44,6 +48,7 @@ pub trait Output: Send + Close + Sync + Debug {
 pub struct DelegatedOutput {
     outputs: Vec<Box<dyn Output>>,
     name: String,
+    columns: Vec<OutputColumn>,
 }
 
 #[async_trait]
@@ -61,6 +66,10 @@ impl Close for DelegatedOutput {
 
 #[async_trait]
 impl Output for DelegatedOutput {
+    fn get_columns(&self) -> &Vec<OutputColumn> {
+        return &self.columns;
+    }
+
     fn name(&self) -> &str {
         return &self.name;
     }
@@ -79,6 +88,7 @@ impl DelegatedOutput {
     pub fn new(outputs: Vec<Box<dyn Output>>, interval: usize) -> Self {
         Self {
             outputs,
+            columns:vec![],
             name: "delegate".to_string(),
         }
     }

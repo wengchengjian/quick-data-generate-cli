@@ -156,26 +156,8 @@ impl TryFrom<OutputSchema> for MysqlOutput {
             args: MysqlArgs::from_value(value.meta, value.channel)?,
             tasks: vec![],
             shutdown: AtomicBool::new(false),
-            columns: get_columns_from_value(&value.columns)
+            columns: OutputColumn::get_columns_from_value(&value.columns),
         })
-    }
-}
-
-/// 从schema中获取columns定义，允许类型未知
-pub fn get_columns_from_value(value: &serde_json::Value) -> Vec<OutputColumn>{
-    if let Some(map) = value.as_object() {
-        return map.into_iter().map(|(key, value)| {
-            OutputColumn {
-                name: key.clone(),
-                data_type: match DataTypeEnum::from_str(value.as_str().unwrap()) {
-                    Ok(dt) => dt,
-                    Err(_) => DataTypeEnum::Unknown,
-                },
-            }
-        }).collect();
-
-    } else {
-        vec![]
     }
 }
 
@@ -185,6 +167,10 @@ use async_trait::async_trait;
 impl super::Output for MysqlOutput {
     fn name(&self) -> &str {
         return &self.name;
+    }
+
+    fn get_columns(&self) -> &Vec<OutputColumn> {
+        return &self.columns;
     }
 
     async fn run(&mut self, context: &mut OutputContext) -> Result<()> {
@@ -294,7 +280,7 @@ pub struct MysqlOutput {
 
     pub tasks: Vec<MysqlTask>,
 
-    pub shutdown: AtomicBool
+    pub shutdown: AtomicBool,
 }
 
 impl TryFrom<Cli> for MysqlOutput {
@@ -306,7 +292,7 @@ impl TryFrom<Cli> for MysqlOutput {
             args: value.try_into()?,
             tasks: vec![],
             shutdown: AtomicBool::new(false),
-            columns: vec![]
+            columns: vec![],
         };
 
         Ok(res)

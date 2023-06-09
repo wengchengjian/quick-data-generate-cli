@@ -1,7 +1,7 @@
 use super::{
     check::{DEFAULT_INTERVAL, MIN_THREAD_SIZE},
     cli::Cli,
-    error::{Result, Error, IoError},
+    error::{Error, IoError, Result},
 };
 use std::path::PathBuf;
 
@@ -25,7 +25,7 @@ pub fn parse_output_from_schema(
             let mut output = MysqlOutput::try_from(schema)?;
             output.name = name;
             Ok(Box::new(output))
-        },
+        }
     }
 }
 
@@ -111,7 +111,9 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
 mod tests {
     use std::{fs, path::PathBuf};
 
-    use super::{parse_schema, parse_outputs_from_schema};
+    use structopt::StructOpt;
+
+    use super::*;
 
     static SCHEMA_PATH: &'static str = "examples/schema.json";
 
@@ -132,9 +134,9 @@ mod tests {
     #[test]
     fn test_parse_schema() {
         let path_buf = PathBuf::from(SCHEMA_PATH);
-        
+
         let schema = parse_schema(&path_buf);
-        
+
         match schema {
             Ok(schema) => {
                 println!("read schema file to struct:{:?}", schema);
@@ -148,9 +150,9 @@ mod tests {
         let path_buf = PathBuf::from(SCHEMA_PATH);
 
         let schema = parse_schema(&path_buf).expect("解析schema文件失败");
-        
+
         let outputs = parse_outputs_from_schema(schema);
-        
+
         match outputs {
             Ok(outputs) => {
                 println!("parse outputs struct:{:#?}", outputs);

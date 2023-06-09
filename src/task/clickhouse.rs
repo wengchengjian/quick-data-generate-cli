@@ -11,16 +11,13 @@ pub struct ClickHouseTask {
 #[async_trait]
 impl Close for ClickHouseTask {
     async fn close(&mut self) -> crate::Result<()> {
-
         Ok(())
     }
 }
 
 impl ClickHouseTask {
     pub fn new(name: String, client: Client, batch: usize, count: usize) -> ClickHouseTask {
-        ClickHouseTask {
-            name,
-        }
+        ClickHouseTask { name }
     }
 
     pub async fn run(&mut self, logger: &mut StaticsLogger) -> crate::Result<()> {

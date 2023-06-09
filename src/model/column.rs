@@ -194,7 +194,6 @@ mod tests {
         let mut c3 = vec![];
         if outputs1[0].name().eq("mysql-output") {
             c3 = OutputColumn::merge_columns(c1, c2);
-
         } else {
             c3 = OutputColumn::merge_columns(c2, c1);
         }

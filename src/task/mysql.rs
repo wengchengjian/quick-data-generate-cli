@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use mysql_async::{prelude::*, Conn, Params, Value};
-use std::{collections::HashMap, time::Duration};
+use mysql_async::{prelude::*, Conn};
+use std::{ time::Duration};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{

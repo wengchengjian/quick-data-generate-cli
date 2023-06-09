@@ -88,7 +88,7 @@ impl DelegatedOutput {
     pub fn new(outputs: Vec<Box<dyn Output>>, interval: usize) -> Self {
         Self {
             outputs,
-            columns:vec![],
+            columns: vec![],
             name: "delegate".to_string(),
         }
     }

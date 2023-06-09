@@ -43,6 +43,6 @@ pub struct Cli {
     #[structopt(short, long)]
     pub concurrency: Option<usize>,
 
-    #[structopt(short, long, default_value = "mysql")]
-    pub output: OutputEnum,
+    #[structopt(short, long)]
+    pub output: Option<OutputEnum>,
 }

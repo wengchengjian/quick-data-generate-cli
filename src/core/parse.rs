@@ -42,16 +42,12 @@ pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
     let output_enum = cli.output;
 
     let output = match output_enum {
-        // output::OutputEnum::ClickHouse => {
-        //     // 初始化输出源
-        //     let mut output = ClickHouseOutput::new(cli);
-        //     output
-        // }
-        output::OutputEnum::Mysql => TryInto::<MysqlOutput>::try_into(cli),
-        //        output::OutputEnum::Kafka => todo!(),
-        //        output::OutputEnum::ElasticSearch => todo!(),
-        //        output::OutputEnum::CSV => todo!(),
-        //        output::OutputEnum::SqlServer => todo!(),
+        Some(output) => match output {
+            output::OutputEnum::Mysql => TryInto::<MysqlOutput>::try_into(cli),
+        }
+        None => {
+            return None;
+        }
     };
     if let Ok(output) = output {
         let res = Box::new(output);

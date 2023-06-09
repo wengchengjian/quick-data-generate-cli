@@ -9,17 +9,18 @@ use tokio::process::Command;
 
 pub async fn get_system_usage() -> (f32, f32) {
     let os = std::env::consts::OS;
-    let mut memory_usage: f32 = 0.0;
-    let mut cpu_percent: f32 = 0.0;
-    if os.eq_ignore_ascii_case("windows") {
-        memory_usage = get_memory_info_on_windows().await;
-        cpu_percent = get_cpu_info_on_windows().await;
-    } else {
-        memory_usage = get_memory_info_on_linux().await;
-        cpu_percent = get_cpu_info_on_linux().await;
-    }
 
-    return (memory_usage, cpu_percent);
+    if os.eq_ignore_ascii_case("windows") {
+        return (
+            get_memory_info_on_windows().await,
+            get_cpu_info_on_windows().await,
+        );
+    } else {
+        return (
+            get_memory_info_on_linux().await,
+            get_cpu_info_on_linux().await,
+        );
+    }
 }
 
 thread_local! {

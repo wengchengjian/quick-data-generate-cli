@@ -2,7 +2,7 @@ use crate::util::{get_current_date, get_system_usage};
 use std::{
     collections::HashMap,
     io::Write,
-    sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::Duration,
 };
 use tokio::sync::Mutex;

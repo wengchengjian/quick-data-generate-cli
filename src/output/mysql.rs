@@ -1,7 +1,6 @@
 use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
-use std::collections::HashMap;
-use std::str::FromStr;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::vec;
@@ -48,24 +47,24 @@ impl MysqlOutput {
                     Option<String>,
                     Option<String>,
                 )>(row);
-                let Field = column.0;
-                let Type = column.1;
-                let Null = column.2;
-                let Key = column.3.unwrap_or("NO".to_string());
-                let Default = column.4.unwrap_or("NULL".to_string());
-                let Extra = column.5.unwrap_or("".to_string());
+                let field = column.0;
+                let cype = column.1;
+                let null = column.2;
+                let key = column.3.unwrap_or("NO".to_string());
+                let default = column.4.unwrap_or("NULL".to_string());
+                let extra = column.5.unwrap_or("".to_string());
                 let column = MysqlColumnDefine {
-                    Field,
-                    Type,
-                    Null,
-                    Key,
-                    Default,
-                    Extra,
+                    field,
+                    cype,
+                    null,
+                    key,
+                    default,
+                    extra,
                 };
 
                 return OutputColumn {
-                    name: column.Field.clone(),
-                    data_type: DataTypeEnum::from_string(column.Type.clone()).unwrap(),
+                    name: column.field.clone(),
+                    data_type: DataTypeEnum::from_string(column.cype.clone()).unwrap(),
                 };
             })
             .await
@@ -76,12 +75,12 @@ impl MysqlOutput {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MysqlColumnDefine {
-    pub Field: String,
-    pub Type: String,
-    pub Null: String,
-    pub Key: String,
-    pub Default: String,
-    pub Extra: String,
+    pub field: String,
+    pub cype: String,
+    pub null: String,
+    pub key: String,
+    pub default: String,
+    pub extra: String,
 }
 
 impl MysqlArgs {
@@ -154,7 +153,6 @@ impl TryFrom<OutputSchema> for MysqlOutput {
         Ok(MysqlOutput {
             name: "默认mysql输出".to_string(),
             args: MysqlArgs::from_value(value.meta, value.channel)?,
-            tasks: vec![],
             shutdown: AtomicBool::new(false),
             columns: OutputColumn::get_columns_from_value(&value.columns),
         })
@@ -169,11 +167,12 @@ impl super::Output for MysqlOutput {
         return &self.name;
     }
 
-    fn get_columns(&self) -> &Vec<OutputColumn> {
-        return &self.columns;
+    fn get_columns(&self) -> Option<&Vec<OutputColumn>> {
+        return Some(&self.columns);
     }
 
-    async fn run(&mut self, context: &mut OutputContext) -> Result<()> {
+
+    async fn run(&mut self, _context: &mut OutputContext) -> Result<()> {
         // 获取连接池
         let pool = self.connect().expect("获取mysql连接失败!");
 
@@ -182,39 +181,30 @@ impl super::Output for MysqlOutput {
         let columns = MysqlOutput::get_columns_define(conn, &self.args.database, &self.args.table)
             .await
             .expect("获取字段定义失败");
-        let (notify_shutdown, _) = broadcast::channel(1);
+        let schema_columns = &self.columns;
+
+        // 合并两个数组
+        let columns = OutputColumn::merge_columns(schema_columns, &columns);
+
+        let (notify_shutdown, _) = broadcast::channel::<()>(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
 
-        let batch = self.args.batch;
-        let count = self.args.count;
         let mut task_num = 0;
-
+        let concurrency = Arc::new(Semaphore::new(self.args.concurrency));
         while !self.shutdown.load(Ordering::SeqCst) {
-            let permit = context.concurrency.clone().acquire_owned().await.unwrap();
+            let permit = concurrency.clone().acquire_owned().await.unwrap();
 
             task_num += 1;
             let task_name = format!("{}-task-{}", self.name, task_num);
-
             let conn = pool
                 .get_conn()
                 .await
                 .map_err(|err| Error::Other(err.into()))?;
-
             let columns = columns.clone();
-            let database = self.args.database.clone();
-            let table = self.args.table.clone();
 
-            let mut task = MysqlTask::new(
-                task_name,
-                conn,
-                batch,
-                count,
-                database,
-                table,
-                columns,
-                shutdown_complete_tx.clone(),
-                Shutdown::new(notify_shutdown.subscribe()),
-            );
+            let shutdown = Shutdown::new(notify_shutdown.subscribe());
+            let mut task = MysqlTask::from_args(task_name, &self.args, conn, columns, shutdown_complete_tx.clone(), shutdown);
+
             tokio::spawn(async move {
                 if let Err(err) = task.run().await {
                     println!("task run error: {}", err);
@@ -223,7 +213,7 @@ impl super::Output for MysqlOutput {
             });
         }
 
-        // When `notify_shutdown` is dropped, all tasks which have `subscribe`d will
+        // When `notify_shutd4own` is dropped, all tasks which have `subscribe`d will
         // receive the shutdown signal and can exit
         drop(notify_shutdown);
         // Drop final `Sender` so the `Receiver` below can complete
@@ -240,9 +230,6 @@ impl super::Output for MysqlOutput {
 impl Close for MysqlOutput {
     async fn close(&mut self) -> Result<()> {
         self.shutdown.store(true, Ordering::SeqCst);
-        for task in &mut self.tasks {
-            task.close().await?;
-        }
         Ok(())
     }
 }
@@ -278,8 +265,6 @@ pub struct MysqlOutput {
 
     pub columns: Vec<OutputColumn>,
 
-    pub tasks: Vec<MysqlTask>,
-
     pub shutdown: AtomicBool,
 }
 
@@ -290,7 +275,6 @@ impl TryFrom<Cli> for MysqlOutput {
         let res = MysqlOutput {
             name: "mysql".into(),
             args: value.try_into()?,
-            tasks: vec![],
             shutdown: AtomicBool::new(false),
             columns: vec![],
         };

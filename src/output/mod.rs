@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
-use std::{str::FromStr, sync::Arc};
-use tokio::sync::Semaphore;
+use std::{str::FromStr};
 
 use crate::model::column::OutputColumn;
+
 
 pub mod clickhouse;
 pub mod csv;
@@ -19,16 +19,17 @@ pub trait Close {
 
 #[async_trait]
 pub trait Output: Send + Close + Sync + Debug {
+
+    fn get_columns(&self) -> Option<&Vec<OutputColumn>>;
+
     /// 通用初始化逻辑
-    fn init(&mut self, context: &mut OutputContext) {}
+    fn init(&mut self, _context: &mut OutputContext) {}
 
-    fn get_columns(&self) -> &Vec<OutputColumn>;
-
-    async fn before_run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
+    async fn before_run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
         Ok(())
     }
 
-    async fn after_run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
+    async fn after_run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
         Ok(())
     }
 
@@ -48,7 +49,6 @@ pub trait Output: Send + Close + Sync + Debug {
 pub struct DelegatedOutput {
     outputs: Vec<Box<dyn Output>>,
     name: String,
-    columns: Vec<OutputColumn>,
 }
 
 #[async_trait]
@@ -66,9 +66,11 @@ impl Close for DelegatedOutput {
 
 #[async_trait]
 impl Output for DelegatedOutput {
-    fn get_columns(&self) -> &Vec<OutputColumn> {
-        return &self.columns;
+
+    fn get_columns(&self) -> Option<&Vec<OutputColumn>> {
+        return None;
     }
+
 
     fn name(&self) -> &str {
         return &self.name;
@@ -85,10 +87,9 @@ impl Output for DelegatedOutput {
 }
 
 impl DelegatedOutput {
-    pub fn new(outputs: Vec<Box<dyn Output>>, interval: usize) -> Self {
+    pub fn new(outputs: Vec<Box<dyn Output>>) -> Self {
         Self {
             outputs,
-            columns: vec![],
             name: "delegate".to_string(),
         }
     }
@@ -103,14 +104,15 @@ impl DelegatedOutput {
     }
 }
 
+
 pub struct OutputContext {
-    pub concurrency: Arc<Semaphore>,
+    pub concurrency:usize
 }
 
 impl OutputContext {
-    pub fn new(concurrency: usize) -> Self {
+    pub fn new(concurrency:usize) -> Self {
         Self {
-            concurrency: Arc::new(Semaphore::new(concurrency)),
+            concurrency
         }
     }
 }

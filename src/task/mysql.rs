@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use mysql_async::{prelude::*, Conn};
 use std::{ time::Duration};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc};
 
 use crate::{
     core::{
@@ -10,7 +10,7 @@ use crate::{
         shutdown::Shutdown,
     },
     model::column::OutputColumn,
-    output::Close,
+    output::{Close, mysql::MysqlArgs},
 };
 
 #[derive(Debug)]
@@ -20,7 +20,6 @@ pub struct MysqlTask {
     pub table: String,
     pub batch: usize,
     pub count: usize,
-    pub completed: Mutex<()>,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
     pub columns: Vec<OutputColumn>,
@@ -54,12 +53,32 @@ impl MysqlTask {
             batch: 2000,
             count,
             shutdown_sender,
-            completed: Mutex::new(()),
             shutdown,
             columns,
             table,
             database,
-            executor: MysqlTaskExecutor::new(conn, 10, count, data2, table2, columns2, name2),
+            executor: MysqlTaskExecutor::new(conn, batch, count, data2, table2, columns2, name2),
+        }
+    }
+
+    pub fn from_args(name: String, args: &MysqlArgs, conn: Conn, columns: Vec<OutputColumn>,
+                     shutdown_sender: mpsc::Sender<()>,
+                     shutdown: Shutdown,) -> Self {
+
+        let data2 = args.database.clone();
+        let table2: String = args.database.clone();
+        let columns2 = columns.clone();
+        let name2 = name.clone();
+        Self {
+            name,
+            database: args.database.clone(),
+            table: args.table.clone(),
+            batch: args.batch,
+            count: args.count,
+            shutdown_sender,
+            shutdown,
+            columns,
+            executor: MysqlTaskExecutor::new(conn,args.batch, args.count, data2, table2, columns2, name2),
         }
     }
 
@@ -134,7 +153,7 @@ impl MysqlTaskExecutor {
     pub async fn add_batch(&mut self, columns_name: String, columns_name_val: String) {
         let mut params = vec![];
 
-        for i in 0..self.batch {
+        for _i in 0..self.batch {
             let data = get_fake_data_mysql(&self.columns);
             params.push(data);
         }

@@ -38,16 +38,16 @@ pub fn check_interval(cli: &mut Cli) {
         Some(interval) => {
             if interval < MIN_INTERVAL {
                 println!("interval must greater than {MIN_INTERVAL}");
-                cli.interval.insert(interval);
+                let _ = cli.interval.insert(interval);
             }
 
             if interval > MAX_INTERVAL {
                 println!("interval must less than {MAX_INTERVAL}");
-                cli.interval.insert(MAX_INTERVAL);
+                let _ = cli.interval.insert(MAX_INTERVAL);
             }
         }
         None => {
-            cli.interval.insert(DEFAULT_INTERVAL);
+            let _ = cli.interval.insert(DEFAULT_INTERVAL);
         }
     }
 }

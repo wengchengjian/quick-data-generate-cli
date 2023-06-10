@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use chrono::DateTime;
 use fake::faker::address::raw::*;
 use fake::faker::internet::raw::*;
 use fake::faker::job::raw::Title;
@@ -13,7 +12,7 @@ use fake::locales::*;
 use fake::uuid::UUIDv4;
 use fake::{Fake, Faker};
 use mysql_async::Params;
-use serde_json::{json, Value};
+use serde_json::{json};
 
 pub fn get_random_u8() -> u8 {
     Faker.fake::<u8>()

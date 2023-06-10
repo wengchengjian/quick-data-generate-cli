@@ -1,7 +1,7 @@
 use super::{
     check::{DEFAULT_INTERVAL, MIN_THREAD_SIZE},
     cli::Cli,
-    error::{Error, IoError, Result},
+    error::{Error, Result},
 };
 use std::path::PathBuf;
 
@@ -106,8 +106,6 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
 #[cfg(test)]
 mod tests {
     use std::{fs, path::PathBuf};
-
-    use structopt::StructOpt;
 
     use super::*;
 

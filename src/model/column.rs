@@ -179,7 +179,7 @@ mod tests {
     use super::*;
 
     static SCHEMA_PATH: &'static str = "examples/schema2.json";
-    static SCHEMA_PATH2: &'static str = "examples/schema3.json";
+    static _SCHEMA_PATH2: &'static str = "examples/schema3.json";
 
     #[test]
     fn test_merge_columns() {
@@ -188,17 +188,17 @@ mod tests {
         let schema = parse_schema(&path_buf).expect("解析schema文件失败");
 
         let outputs1 = parse_outputs_from_schema(schema).expect("解析output失败");
-        let c1 = outputs1[0].get_columns();
-        let c2 = outputs1[1].get_columns();
+        let c1 = outputs1[0].get_columns().unwrap();
+        let c2 = outputs1[1].get_columns().unwrap();
 
-        let mut c3 = vec![];
+        let mut _c3 = vec![];
         if outputs1[0].name().eq("mysql-output") {
-            c3 = OutputColumn::merge_columns(c1, c2);
+            _c3 = OutputColumn::merge_columns(c1, c2);
         } else {
-            c3 = OutputColumn::merge_columns(c2, c1);
+            _c3 = OutputColumn::merge_columns(c2, c1);
         }
 
-        let c4m = OutputColumn::map_columns(&c3);
+        let c4m = OutputColumn::map_columns(&_c3);
         assert!((*c4m.get("PACKET_ID").unwrap()).eq(&DataTypeEnum::UInt64));
         assert!((*c4m.get("PACKET_NAME").unwrap()).eq(&DataTypeEnum::String));
         assert!((*c4m.get("ip").unwrap()).eq(&DataTypeEnum::IPv4));

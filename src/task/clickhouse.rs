@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use clickhouse::{inserter::Inserter, Client};
 use serde_json::Value;
 
-use crate::{core::log::StaticsLogger, output::Close};
+use crate::{output::Close};
 
 #[derive(Debug)]
 pub struct ClickHouseTask {
@@ -16,15 +16,11 @@ impl Close for ClickHouseTask {
 }
 
 impl ClickHouseTask {
-    pub fn new(name: String, client: Client, batch: usize, count: usize) -> ClickHouseTask {
+    pub fn new(name: String, _client: Client, _batch: usize, _count: usize) -> ClickHouseTask {
         ClickHouseTask { name }
     }
 
-    pub async fn run(&mut self, logger: &mut StaticsLogger) -> crate::Result<()> {
-        Ok(())
-    }
-
-    pub async fn add_batch(inserter: &mut Inserter<Value>, batch: usize) -> crate::Result<()> {
+    pub async fn add_batch(_inserter: &mut Inserter<Value>, _batch: usize) -> crate::Result<()> {
         //        for i in 1..batch {
         //            let src_ip = generate_ip();
         //            let dst_ip = generate_ip();

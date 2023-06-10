@@ -51,7 +51,7 @@ pub async fn create_delegate_output(cli: Cli) -> (DelegatedOutput, OutputContext
 
     let context = create_context(concurrency);
 
-    let output = DelegatedOutput::new(outputs, interval);
+    let output = DelegatedOutput::new(outputs);
 
     return (output, context);
 }

@@ -51,15 +51,15 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for ClickHouseOutput {
-    fn get_columns(&self) -> &Vec<OutputColumn> {
-        return &self.columns;
-    }
 
+    fn get_columns(&self) -> Option<&Vec<OutputColumn>> {
+        return Some(&self.columns);
+    }
     fn name(&self) -> &str {
         return &self.name;
     }
 
-    async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
+    async fn run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
         Ok(())
         //        let client = self.connect();
         //

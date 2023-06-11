@@ -47,6 +47,7 @@ pub async fn create_delegate_output(cli: Cli) -> (DelegatedOutput, OutputContext
         panic!("无任何输出源可以执行");
     }
 
+
     STATICS_LOGGER.lock().await.interval(interval);
 
     let context = create_context(concurrency);

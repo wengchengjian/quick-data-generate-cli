@@ -84,6 +84,14 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
         outputs.append(&mut schema_outputs);
     }
 
+//    let _ = cli.output.insert(output::OutputEnum::Mysql);
+//    let _ = cli.database.insert("tests".to_string());
+//    let _ = cli.table.insert("UPGRADE_PACKET_INFO".to_string());
+//    let _ = cli.user.insert("root".to_string());
+//    let _ = cli.password.insert("wcj520600".to_string());
+//    let _ = cli.batch.insert(10);
+//    let _ = cli.concurrency.insert(1);
+
     if let Some(output) = parse_output_from_cli(cli) {
         outputs.push(output);
     }

@@ -1,4 +1,4 @@
-use crate::util::{get_current_date, get_system_usage};
+use crate::util::{get_current_date, get_system_usage, format_memory};
 use std::{
     collections::HashMap,
     io::Write,
@@ -105,12 +105,8 @@ impl StaticsLogger {
                 return;
             }
 
-            for _ in logger.factory.logs.values() {
-                print!("\x1B[1A");
-            }
             for log in logger.factory.logs.values() {
                 log.print_log().await;
-                println!();
             }
 
             let interval = logger.interval;
@@ -192,8 +188,9 @@ impl StaticsLog {
 
         let (memory_usage, cpu_percent) = get_system_usage().await;
 
-        print!(
-            "\r{}---> Total: {}, Commit: {}, TPS: {}, Memory Usage: {:.2} KB, Cpu Usage: {:.2}%",
+        let memory_usage = format_memory(memory_usage);
+        println!(
+            "\r{}---> Total: {}, Commit: {}, TPS: {}, Memory Usage: {}, Cpu Usage: {:.2}%",
             name, total, commit, tps, memory_usage, cpu_percent
         );
         std::io::stdout().flush().unwrap();

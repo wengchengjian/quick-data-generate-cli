@@ -66,7 +66,7 @@ impl MysqlTask {
                      shutdown: Shutdown,) -> Self {
 
         let data2 = args.database.clone();
-        let table2: String = args.database.clone();
+        let table2: String = args.table.clone();
         let columns2 = columns.clone();
         let name2 = name.clone();
         Self {
@@ -98,8 +98,6 @@ impl MysqlTask {
     }
 
     pub async fn run(&mut self) -> crate::Result<()> {
-        register(&self.name.clone()).await;
-        println!("{} will running...", self.name);
         let (columns_name, columns_name_val) = self.get_columns_name();
 
         while !self.shutdown.is_shutdown() {
@@ -112,7 +110,6 @@ impl MysqlTask {
                 }
             };
 
-            tokio::time::sleep(Duration::from_secs(1)).await;
         }
         Ok(())
     }

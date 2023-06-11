@@ -25,14 +25,12 @@ mysql_async = { path="./submodule/mysql_async" }
 mysql_common = { path="./submodule/rust_mysql_common" }
 futures = "0.3.28"
 regex = "1.8.4"
-tracing = "0.1.37"
-tracing-subscriber = "0.3.17"
 thiserror = "1.0.40"
 kafka = "0.9.0"
+winapi = {version = "0.3.9", features=["winuser","minwindef"]}
 [dev-dependencies]
 tokio-test = "*"
 openssl = "0.10.54"
-
 pretty_assertions = "1"
 # openssl = { version = "0.10", features = ["vendored"] }
 [build-dependencies]

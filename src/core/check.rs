@@ -1,13 +1,13 @@
 use super::cli::Cli;
 
 /// 单次默认提交数量
-pub static DEFAULT_BATCH_SIZE: usize = 5_0000;
+pub static DEFAULT_BATCH_SIZE: usize = 5_000;
 
 /// 单次最大提交数量
 pub static MAX_BATCH_SIZE: usize = 10_0000;
 
 /// 单次最小提交数量
-pub static MIN_BATCH_SIZE: usize = 1_000;
+pub static MIN_BATCH_SIZE: usize = 1;
 
 /// 日志最大打印间隔
 pub static MAX_INTERVAL: usize = 60;
@@ -53,7 +53,7 @@ pub fn check_interval(cli: &mut Cli) {
 }
 
 pub fn check_thread_num(cli: &mut Cli) {
-    let num_threads = num_cpus::get();
+    // let num_threads = num_cpus::get();
 
     let th = cli.concurrency;
     match th {
@@ -63,10 +63,10 @@ pub fn check_thread_num(cli: &mut Cli) {
                 cli.concurrency = Some(MIN_THREAD_SIZE);
             }
 
-            if val > num_threads {
-                println!("threads must less than or equal to the number of cores: {num_threads}");
-                cli.concurrency = Some(num_threads);
-            }
+            // if val > num_threads {
+            //     println!("threads must less than or equal to the number of cores: {num_threads}");
+            //     cli.concurrency = Some(num_threads);
+            // }
         }
         None => {
             cli.concurrency = Some(MIN_THREAD_SIZE);

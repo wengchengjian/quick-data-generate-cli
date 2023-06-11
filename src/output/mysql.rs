@@ -8,6 +8,7 @@ use tokio::sync::{broadcast, mpsc, Semaphore};
 
 use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
+use crate::core::log::register;
 use crate::core::shutdown::Shutdown;
 use crate::model::column::{DataTypeEnum, OutputColumn};
 use crate::model::schema::{ChannelSchema, OutputSchema};
@@ -17,13 +18,12 @@ impl MysqlOutput {
     pub fn connect(&self) -> Result<Pool> {
         //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
-            "mysql://{}:{}@{}:{}/{}",
+            "mysql://{}:{}@{}:{}/{}?stmt_cache_size=128&compression=fast",
             self.args.user, self.args.password, self.args.host, self.args.port, self.args.database
         );
 
-        let database_url = Opts::from_url(&url).map_err(|err| Error::Other(err.into()))?;
-
-        let pool = Pool::new(database_url);
+        let opt = Opts::from_url(&url).map_err(|err| Error::Other(err.into()))?;
+        let pool = Pool::new(opt);
 
         Ok(pool)
     }
@@ -188,14 +188,15 @@ impl super::Output for MysqlOutput {
 
         let (notify_shutdown, _) = broadcast::channel::<()>(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
+        
+        //注册日志
+        register(&self.name.clone()).await;
+        println!("{} will running...", self.name);
 
-        let mut task_num = 0;
         let concurrency = Arc::new(Semaphore::new(self.args.concurrency));
         while !self.shutdown.load(Ordering::SeqCst) {
             let permit = concurrency.clone().acquire_owned().await.unwrap();
 
-            task_num += 1;
-            let task_name = format!("{}-task-{}", self.name, task_num);
             let conn = pool
                 .get_conn()
                 .await
@@ -203,7 +204,7 @@ impl super::Output for MysqlOutput {
             let columns = columns.clone();
 
             let shutdown = Shutdown::new(notify_shutdown.subscribe());
-            let mut task = MysqlTask::from_args(task_name, &self.args, conn, columns, shutdown_complete_tx.clone(), shutdown);
+            let mut task = MysqlTask::from_args(self.name.clone(), &self.args, conn, columns, shutdown_complete_tx.clone(), shutdown);
 
             tokio::spawn(async move {
                 if let Err(err) = task.run().await {

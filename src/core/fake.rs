@@ -14,8 +14,6 @@ use fake::{Fake, Faker};
 use mysql_async::Params;
 use serde_json::json;
 
-
-
 pub fn get_random_u8() -> u8 {
     Faker.fake::<u8>()
 }
@@ -231,6 +229,10 @@ pub fn get_random_paragraphs_zh(count: Range<usize>) -> Vec<String> {
     Paragraphs(ZH_CN, count).fake()
 }
 
+pub fn get_random_bool() -> bool {
+    Faker.fake()
+}
+
 pub type Json = serde_json::Value;
 
 pub fn get_fake_data_mysql(columns: &Vec<OutputColumn>) -> Params {
@@ -424,6 +426,11 @@ pub fn get_fake_data_mysql(columns: &Vec<OutputColumn>) -> Params {
             DataTypeEnum::Unknown => {
                 value.entry(name).or_insert(mysql_common::Value::NULL);
             }
+            DataTypeEnum::Boolean => {
+                value
+                    .entry(name)
+                    .or_insert(mysql_common::Value::UInt((0..1).fake::<u64>()));
+            }
         }
     }
 
@@ -540,6 +547,9 @@ pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Json {
             }
             DataTypeEnum::Unknown => {
                 data[name] = json!(null);
+            }
+            DataTypeEnum::Boolean => {
+                data[name] = json!(get_random_bool());
             }
         }
     }

@@ -153,7 +153,7 @@ impl TryFrom<OutputSchema> for MysqlOutput {
             name: "默认mysql输出".to_string(),
             args: MysqlArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
-            columns: OutputColumn::get_columns_from_value(&value.columns),
+            columns: OutputColumn::get_columns_from_schema(&value.columns),
         })
     }
 }

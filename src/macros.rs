@@ -8,6 +8,3 @@ macro_rules! impl_func_is_primitive_by_parse {
             )*
     };
 }
-
-
-

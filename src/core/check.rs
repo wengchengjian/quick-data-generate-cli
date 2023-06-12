@@ -1,6 +1,12 @@
-use std::net::{IpAddr, Ipv6Addr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    str::FromStr,
+};
 
-use chrono::{DateTime, NaiveTime, NaiveDate, NaiveDateTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
+use regex::Regex;
+
+use crate::model::column::DataTypeEnum;
 
 use super::cli::Cli;
 
@@ -98,45 +104,44 @@ pub fn check_batch_size(cli: &mut Cli) {
     }
 }
 
-
 pub fn is_null(val: &str) -> bool {
-    todo!()
+    return val.to_lowercase().eq("null");
 }
 
-pub fn is_string(val: &str) -> bool {
-    todo!()
+pub fn is_string(_val: &str) -> bool {
+    true
 }
 
-pub fn is_country(val: &str) -> bool {
-    todo!()
+pub fn is_country(_val: &str) -> bool {
+    true
 }
 
-pub fn is_city(val: &str) -> bool {
-    todo!()
+pub fn is_city(_val: &str) -> bool {
+    true
 }
 
 pub fn is_phone(val: &str) -> bool {
-    todo!()
+    PHONE_REGEX.is_match(val)
 }
 
-pub fn is_password(val: &str) -> bool {
-    todo!()
+pub fn is_password(_val: &str) -> bool {
+    true
 }
 
-pub fn is_username(val: &str) -> bool {
-    todo!()
+pub fn is_username(_val: &str) -> bool {
+    true
 }
 
 pub fn is_ipv4(val: &str) -> bool {
-    todo!()
+    Ipv4Addr::from_str(val).is_ok()
 }
 
 pub fn is_email(val: &str) -> bool {
-    todo!()
+    EMAIL_REGEX.is_match(val)
 }
 
 pub fn is_ipv6(val: &str) -> bool {
-    Ipv6Addr::from(val)
+    Ipv6Addr::from_str(val).is_ok()
 }
 
 pub fn is_timestamp(val: &str) -> bool {
@@ -149,12 +154,68 @@ pub fn is_timestamp(val: &str) -> bool {
 }
 
 pub fn is_datetime(val: &str) -> bool {
-    let mut ok = false;
     for format in DATE_FORMATS {
-        ok = DateTime::parse_from_str(val, format).is_ok()
+        match NaiveDateTime::parse_from_str(val, format) {
+            Ok(_) => return true,
+            Err(_) => continue,
+        }
     }
+    return false;
+}
+pub static DATE_FORMATS: [&'static str; 5] = [
+    "%Y-%m-%d %H:%M:%S",
+    "%y/%m/%d %H:%M",
+    "%Y-%m-%d %H:%M:%S%.f",
+    "%Y-%m-%dT%H:%M:%S%z",
+    "%y/%m/%d %H:%M:%S",
+];
 
-    ok
+lazy_static! {
+
+    pub static ref EMAIL_REGEX: Regex =
+        Regex::new(r"[\w!#$%&'*+/=?^_`{|}~-]+(?:\.[\w!#$%&'*+/=?^_`{|}~-]+)*@(?:[\w](?:[\w-]*[\w])?\.)+[\w](?:[\w-]*[\w])?").unwrap();
+
+    pub static ref PHONE_REGEX: Regex = Regex::new(r"^1(3[0-9]|4[01456879]|5[0-35-9]|6[2567]|7[0-8]|8[0-9]|9[0-35-9])\d{8}").unwrap();
 }
 
-pub static DATE_FORMATS: [&'static str; 1] = ["yyyy-MM-dd HH:mm:ss"];
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_is_email() {
+        let email = "473991883@qq.com";
+        assert!(is_email(email))
+    }
+
+    #[test]
+    fn test_is_ipv4() {
+        let ip = "127.0.0.1";
+        assert!(is_ipv4(ip))
+    }
+
+    #[test]
+    fn test_is_ipv6() {
+        let ipv6 = "2408:80f0:410c:1d:0:ff:b07a:39af";
+        assert!(is_ipv6(ipv6))
+    }
+
+    #[test]
+    fn test_is_null() {
+        let val = "null";
+        assert!(is_null(val))
+    }
+
+    #[test]
+    fn test_is_phone() {
+        let val = "15385936181";
+        assert!(is_phone(val))
+    }
+
+    #[test]
+    fn test_is_datetime() {
+        let val = "2023-06-12 21:53:00";
+        assert!(is_datetime(val))
+    }
+}

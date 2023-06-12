@@ -6,19 +6,18 @@ use super::{
 use std::path::PathBuf;
 
 use crate::{
+    impl_func_is_primitive_by_parse,
     model::{
         column::DataTypeEnum,
         schema::{OutputSchema, Schema},
     },
-    output::{self, mysql::MysqlOutput}, impl_func_is_primitive_by_parse,
+    output::{self, mysql::MysqlOutput},
 };
 
 impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
 impl_func_is_primitive_by_parse!((is_i8, i8), (is_i16, i16), (is_i32, i32), (is_i64, i64));
 
-
 pub fn parse_schema(path: &PathBuf) -> Result<Schema> {
-
     let data = std::fs::read(path)?;
     let schema: Schema = serde_json::from_slice(&data).map_err(|err| Error::Other(err.into()))?;
     Ok(schema)
@@ -121,7 +120,31 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
 
 use super::check::*;
 
-pub fn parse_type(val: &str) -> DataTypeEnum {
+pub fn parse_type(val: &serde_json::Value) -> DataTypeEnum {
+    let val = val;
+
+    if val.is_u64() {
+        return DataTypeEnum::UInt64;
+    }
+
+    if val.is_i64() {
+        return DataTypeEnum::Int64;
+    }
+
+    if val.is_f64() {
+        return DataTypeEnum::Float64;
+    }
+
+    if val.is_boolean() {
+        return DataTypeEnum::Boolean;
+    }
+
+    if val.is_null() {
+        return DataTypeEnum::Nullable;
+    }
+
+    let val = val.as_str().unwrap_or("null");
+
     if is_u8(val) {
         return DataTypeEnum::UInt8;
     }
@@ -149,43 +172,26 @@ pub fn parse_type(val: &str) -> DataTypeEnum {
     if is_datetime(val) {
         return DataTypeEnum::DateTime;
     }
-    if is_timestamp(val) {
-        return DataTypeEnum::Timestamp;
-    }
     if is_ipv6(val) {
-        return DataTypeEnum::Timestamp;
+        return DataTypeEnum::IPv6;
     }
     if is_ipv4(val) {
-        return DataTypeEnum::Timestamp;
+        return DataTypeEnum::IPv4;
     }
     if is_email(val) {
-        return DataTypeEnum::Timestamp;
-    }
-    if is_username(val) {
-        return DataTypeEnum::Timestamp;
-    }
-    if is_password(val) {
-        return DataTypeEnum::Timestamp;
+        return DataTypeEnum::Email;
     }
     if is_phone(val) {
-        return DataTypeEnum::Timestamp;
-    }
-    if is_city(val) {
-        return DataTypeEnum::Timestamp;
-    }
-    if is_country(val) {
-        return DataTypeEnum::Timestamp;
-    }
-    if is_string(val) {
-        return DataTypeEnum::Timestamp;
+        return DataTypeEnum::Phone;
     }
     if is_null(val) {
         return DataTypeEnum::Nullable;
     }
+    if is_string(val) {
+        return DataTypeEnum::String;
+    }
     return DataTypeEnum::Unknown;
 }
-
-
 
 #[cfg(test)]
 mod tests {

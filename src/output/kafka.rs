@@ -1,19 +1,35 @@
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use super::{Close, Output, OutputContext};
-use crate::{core::error::{Result, Error}, model::column::OutputColumn};
+use crate::{
+    core::{
+        error::{Error, Result},
+        shutdown::Shutdown,
+    },
+    model::column::OutputColumn, task::kafka::KafkaTask,
+};
 use async_trait::async_trait;
 use rdkafka::{
     consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer},
     producer::FutureProducer,
     ClientConfig, Message,
 };
-use tokio::time::{timeout, Timeout};
+use tokio::{
+    sync::{broadcast, mpsc, Semaphore},
+    time::{timeout, Timeout},
+};
 
 #[derive(Debug)]
 pub struct KafkaOutput {
     pub name: String,
     pub args: KafkaArgs,
+    pub shutdown: AtomicBool,
     pub columns: Vec<OutputColumn>,
 }
 
@@ -26,6 +42,12 @@ pub struct KafkaArgs {
     pub topic: String,
 
     pub partitions: Option<Vec<i32>>,
+
+    pub concurrency: usize,
+
+    pub batch: usize,
+
+    pub count: usize,
 }
 
 pub static DEFAULT_GROUP: &'static str = "vFBiQ6aasB";
@@ -50,13 +72,13 @@ impl KafkaOutput {
                     let payload = match message.payload_view::<str>() {
                         None => "",
                         Some(Ok(s)) => s,
-                        Some(Err(e)) => "",
+                        Some(Err(_e)) => "",
                     };
 
                     if payload.len() == 0 {
                         return vec![];
                     }
-                    let val: serde_json::Value = serde_json::from_str(payload);
+                    let val: serde_json::Value = serde_json::from_str(payload).unwrap();
 
                     let columns = OutputColumn::get_columns_from_value(&val);
                     consumer
@@ -105,8 +127,7 @@ impl Output for KafkaOutput {
     }
 
     async fn run(&mut self, _context: &mut OutputContext) -> Result<()> {
-        // 获取生产者
-        let producer = self.get_provider()?;
+
         // 获取生产者
         let topic = self.args.topic.as_str();
         let ref topics = vec![topic];
@@ -118,7 +139,6 @@ impl Output for KafkaOutput {
 
         // 合并两个数组
         let columns = OutputColumn::merge_columns(schema_columns, &columns);
-
         let (notify_shutdown, _) = broadcast::channel::<()>(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
 
@@ -128,17 +148,15 @@ impl Output for KafkaOutput {
         while !self.shutdown.load(Ordering::SeqCst) {
             let permit = concurrency.clone().acquire_owned().await.unwrap();
 
-            let conn = pool
-                .get_conn()
-                .await
-                .map_err(|err| Error::Other(err.into()))?;
+            // 获取生产者
+            let producer = self.get_provider()?;
             let columns = columns.clone();
-
             let shutdown = Shutdown::new(notify_shutdown.subscribe());
-            let mut task = MysqlTask::from_args(
+
+            let mut task = KafkaTask::from_args(
                 self.name.clone(),
                 &self.args,
-                conn,
+                producer,
                 columns,
                 shutdown_complete_tx.clone(),
                 shutdown,

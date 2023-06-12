@@ -1,6 +1,9 @@
 use std::{collections::HashMap, str::FromStr};
 
-use crate::core::error::{Error, IoError, Result};
+use crate::core::{
+    error::{Error, IoError, Result},
+    parse::parse_type,
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -49,10 +52,7 @@ impl OutputColumn {
                 .into_iter()
                 .map(|(key, value)| OutputColumn {
                     name: key.clone(),
-                    data_type: match DataTypeEnum::from_str(value.as_str().unwrap()) {
-                        Ok(dt) => dt,
-                        Err(_) => DataTypeEnum::Unknown,
-                    },
+                    data_type: DataTypeEnum::parse_type_from_value(value),
                 })
                 .collect();
         } else {
@@ -121,11 +121,13 @@ pub enum DataTypeEnum {
     UUID,
     IPv4,
     IPv6,
+    Boolean,
+
     Unknown,
 }
 
 impl DataTypeEnum {
-    pub fn parse_type_from_str(val: &str) -> DataTypeEnum {
+    pub fn parse_type_from_value(val: &serde_json::Value) -> DataTypeEnum {
         return parse_type(val);
     }
 }
@@ -203,6 +205,18 @@ mod tests {
 
     static SCHEMA_PATH: &'static str = "examples/schema2.json";
     static _SCHEMA_PATH2: &'static str = "examples/schema3.json";
+    static VALUE_PATH: &'static str = "examples/other.json";
+
+    #[test]
+    fn test_parse_value_type() {
+        let path_buf = PathBuf::from(VALUE_PATH);
+        let data = std::fs::read(path_buf).unwrap();
+
+        let val = serde_json::from_slice(&data).unwrap();
+        let columns = OutputColumn::get_columns_from_value(&val);
+
+        assert!(columns.len() > 0);
+    }
 
     #[test]
     fn test_merge_columns() {

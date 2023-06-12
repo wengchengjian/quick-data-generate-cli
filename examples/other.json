@@ -1,0 +1,14 @@
+{
+    "name": "wcj",
+    "password": "123456x",
+    "email": "473991883@qq.com",
+    "phone": 15385936181,
+    "yes": true,
+    "age": 17,
+    "age2": -17,
+    "age3": 16.88,
+    "create_time":"2023-06-12 21:53:00",
+    "ip1": "127.0.0.1",
+    "ip2": "2408:80f0:410c:1d:0:ff:b07a:39af",
+    "description": "Hello, World!"
+}

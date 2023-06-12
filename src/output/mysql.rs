@@ -1,14 +1,13 @@
 use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::vec;
 use tokio::sync::{broadcast, mpsc, Semaphore};
 
 use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
-use crate::core::log::register;
 use crate::core::shutdown::Shutdown;
 use crate::model::column::{DataTypeEnum, OutputColumn};
 use crate::model::schema::{ChannelSchema, OutputSchema};
@@ -171,7 +170,6 @@ impl super::Output for MysqlOutput {
         return Some(&self.columns);
     }
 
-
     async fn run(&mut self, _context: &mut OutputContext) -> Result<()> {
         // 获取连接池
         let pool = self.connect().expect("获取mysql连接失败!");
@@ -188,9 +186,7 @@ impl super::Output for MysqlOutput {
 
         let (notify_shutdown, _) = broadcast::channel::<()>(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
-        
-        //注册日志
-        register(&self.name.clone()).await;
+
         println!("{} will running...", self.name);
 
         let concurrency = Arc::new(Semaphore::new(self.args.concurrency));
@@ -204,7 +200,14 @@ impl super::Output for MysqlOutput {
             let columns = columns.clone();
 
             let shutdown = Shutdown::new(notify_shutdown.subscribe());
-            let mut task = MysqlTask::from_args(self.name.clone(), &self.args, conn, columns, shutdown_complete_tx.clone(), shutdown);
+            let mut task = MysqlTask::from_args(
+                self.name.clone(),
+                &self.args,
+                conn,
+                columns,
+                shutdown_complete_tx.clone(),
+                shutdown,
+            );
 
             tokio::spawn(async move {
                 if let Err(err) = task.run().await {

@@ -1,16 +1,11 @@
 use async_trait::async_trait;
 use mysql_async::{prelude::*, Conn};
-use std::{ time::Duration};
-use tokio::sync::{mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
-    core::{
-        fake::get_fake_data_mysql,
-        log::{incr_log, register},
-        shutdown::Shutdown,
-    },
+    core::{fake::get_fake_data_mysql, log::incr_log, shutdown::Shutdown},
     model::column::OutputColumn,
-    output::{Close, mysql::MysqlArgs},
+    output::{mysql::MysqlArgs, Close},
 };
 
 #[derive(Debug)]
@@ -61,10 +56,14 @@ impl MysqlTask {
         }
     }
 
-    pub fn from_args(name: String, args: &MysqlArgs, conn: Conn, columns: Vec<OutputColumn>,
-                     shutdown_sender: mpsc::Sender<()>,
-                     shutdown: Shutdown,) -> Self {
-
+    pub fn from_args(
+        name: String,
+        args: &MysqlArgs,
+        conn: Conn,
+        columns: Vec<OutputColumn>,
+        shutdown_sender: mpsc::Sender<()>,
+        shutdown: Shutdown,
+    ) -> Self {
         let data2 = args.database.clone();
         let table2: String = args.table.clone();
         let columns2 = columns.clone();
@@ -78,7 +77,9 @@ impl MysqlTask {
             shutdown_sender,
             shutdown,
             columns,
-            executor: MysqlTaskExecutor::new(conn,args.batch, args.count, data2, table2, columns2, name2),
+            executor: MysqlTaskExecutor::new(
+                conn, args.batch, args.count, data2, table2, columns2, name2,
+            ),
         }
     }
 
@@ -109,7 +110,6 @@ impl MysqlTask {
                     continue;
                 }
             };
-
         }
         Ok(())
     }

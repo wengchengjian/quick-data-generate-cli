@@ -2,7 +2,7 @@ use rand::{rngs::ThreadRng, Rng};
 use std::{
     cell::RefCell,
     process::Output,
-    time::{SystemTime, UNIX_EPOCH, Duration}, mem,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use tokio::process::Command;
@@ -23,25 +23,22 @@ pub async fn get_system_usage() -> (u64, f32) {
     }
 }
 
-pub fn format_memory(size:u64)-> String {
+pub fn format_memory(size: u64) -> String {
     let mut bytes = String::new();
-        if (size >= 1024 * 1024 * 1024) {
-            let s = size as f64 / (1024.0 * 1024.0 * 1024.0);
-            bytes.push_str(format!("{:.2}GB",s).as_str());
-        }
-        else if (size >= 1024 * 1024) {
-            let s = size as f64 / (1024.0 * 1024.0);
-            bytes.push_str(format!("{:.2}MB",s).as_str());
-        }
-        else if (size >= 1024) {
-            let s = size as f64 / (1024.0);
-            bytes.push_str(format!("{:.2}KB",s).as_str());
-        }
-        else if (size < 1024) {
-            let s = size as f64;
-            bytes.push_str(format!("{:.2}B",s).as_str());
-        }
-        return bytes.to_string();
+    if size >= 1024 * 1024 * 1024 {
+        let s = size as f64 / (1024.0 * 1024.0 * 1024.0);
+        bytes.push_str(format!("{:.2}GB", s).as_str());
+    } else if size >= 1024 * 1024 {
+        let s = size as f64 / (1024.0 * 1024.0);
+        bytes.push_str(format!("{:.2}MB", s).as_str());
+    } else if size >= 1024 {
+        let s = size as f64 / (1024.0);
+        bytes.push_str(format!("{:.2}KB", s).as_str());
+    } else if size < 1024 {
+        let s = size as f64;
+        bytes.push_str(format!("{:.2}B", s).as_str());
+    }
+    return bytes.to_string();
 }
 
 thread_local! {
@@ -109,10 +106,13 @@ pub async fn get_cpu_info_on_linux() -> f32 {
     return cpu;
 }
 
-
-
-use winapi::{um::{processthreadsapi::{GetCurrentProcess, GetProcessTimes}, winnt::LARGE_INTEGER}, shared::minwindef::FILETIME};
-
+use winapi::{
+    shared::minwindef::FILETIME,
+    um::{
+        processthreadsapi::{GetCurrentProcess, GetProcessTimes},
+        winnt::LARGE_INTEGER,
+    },
+};
 
 pub async fn get_cpu_info_on_windows() -> f32 {
     let mut creation_time = FILETIME::default();
@@ -151,13 +151,12 @@ pub async fn get_cpu_info_on_windows() -> f32 {
     unsafe {
         let sys_time = sys_time.QuadPart().clone() as f64;
         let sys_time_freq = sys_time_freq.QuadPart().clone() as f64;
-    
+
         let total_cpu_time = (kernel_time + user_time) as f64 / sys_time_freq * 100.0;
         let wall_clock_time = sys_time / sys_time_freq * (100.0) as f64;
-    
+
         (total_cpu_time / wall_clock_time) as f32
     }
-    
 }
 
 fn filetime_to_large_int(ft: &FILETIME) -> i64 {
@@ -171,8 +170,13 @@ pub async fn get_memory_info_on_windows() -> u64 {
     unsafe {
         let process_handle: HANDLE = GetCurrentProcess();
         let mut pmc = PROCESS_MEMORY_COUNTERS::default();
-        if GetProcessMemoryInfo(process_handle, &mut pmc, std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32) != 0 {
-            (pmc.WorkingSetSize as u64)
+        if GetProcessMemoryInfo(
+            process_handle,
+            &mut pmc,
+            std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+        ) != 0
+        {
+            pmc.WorkingSetSize as u64
         } else {
             0
         }

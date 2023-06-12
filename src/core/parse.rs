@@ -6,11 +6,19 @@ use super::{
 use std::path::PathBuf;
 
 use crate::{
-    model::schema::{OutputSchema, Schema},
-    output::{self, mysql::MysqlOutput},
+    model::{
+        column::DataTypeEnum,
+        schema::{OutputSchema, Schema},
+    },
+    output::{self, mysql::MysqlOutput}, impl_func_is_primitive_by_parse,
 };
 
+impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
+impl_func_is_primitive_by_parse!((is_i8, i8), (is_i16, i16), (is_i32, i32), (is_i64, i64));
+
+
 pub fn parse_schema(path: &PathBuf) -> Result<Schema> {
+
     let data = std::fs::read(path)?;
     let schema: Schema = serde_json::from_slice(&data).map_err(|err| Error::Other(err.into()))?;
     Ok(schema)
@@ -44,7 +52,7 @@ pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
     let output = match output_enum {
         Some(output) => match output {
             output::OutputEnum::Mysql => TryInto::<MysqlOutput>::try_into(cli),
-        }
+        },
         None => {
             return None;
         }
@@ -84,13 +92,13 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
         outputs.append(&mut schema_outputs);
     }
 
-//    let _ = cli.output.insert(output::OutputEnum::Mysql);
-//    let _ = cli.database.insert("tests".to_string());
-//    let _ = cli.table.insert("UPGRADE_PACKET_INFO".to_string());
-//    let _ = cli.user.insert("root".to_string());
-//    let _ = cli.password.insert("wcj520600".to_string());
-//    let _ = cli.batch.insert(10);
-//    let _ = cli.concurrency.insert(1);
+    //    let _ = cli.output.insert(output::OutputEnum::Mysql);
+    //    let _ = cli.database.insert("tests".to_string());
+    //    let _ = cli.table.insert("UPGRADE_PACKET_INFO".to_string());
+    //    let _ = cli.user.insert("root".to_string());
+    //    let _ = cli.password.insert("wcj520600".to_string());
+    //    let _ = cli.batch.insert(10);
+    //    let _ = cli.concurrency.insert(1);
 
     if let Some(output) = parse_output_from_cli(cli) {
         outputs.push(output);
@@ -110,6 +118,74 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
 
     return Ok((outputs, interval, concurrency));
 }
+
+use super::check::*;
+
+pub fn parse_type(val: &str) -> DataTypeEnum {
+    if is_u8(val) {
+        return DataTypeEnum::UInt8;
+    }
+    if is_u16(val) {
+        return DataTypeEnum::UInt16;
+    }
+    if is_u32(val) {
+        return DataTypeEnum::UInt32;
+    }
+    if is_u64(val) {
+        return DataTypeEnum::UInt64;
+    }
+    if is_i8(val) {
+        return DataTypeEnum::Int8;
+    }
+    if is_i16(val) {
+        return DataTypeEnum::Int16;
+    }
+    if is_i32(val) {
+        return DataTypeEnum::Int32;
+    }
+    if is_i64(val) {
+        return DataTypeEnum::Int64;
+    }
+    if is_datetime(val) {
+        return DataTypeEnum::DateTime;
+    }
+    if is_timestamp(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_ipv6(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_ipv4(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_email(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_username(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_password(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_phone(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_city(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_country(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_string(val) {
+        return DataTypeEnum::Timestamp;
+    }
+    if is_null(val) {
+        return DataTypeEnum::Nullable;
+    }
+    return DataTypeEnum::Unknown;
+}
+
+
 
 #[cfg(test)]
 mod tests {

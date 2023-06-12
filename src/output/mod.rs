@@ -1,10 +1,9 @@
 use async_trait::async_trait;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
-use std::{str::FromStr};
+use std::str::FromStr;
 
-use crate::model::column::OutputColumn;
-
+use crate::{core::log::register, model::column::OutputColumn};
 
 pub mod clickhouse;
 pub mod csv;
@@ -19,13 +18,14 @@ pub trait Close {
 
 #[async_trait]
 pub trait Output: Send + Close + Sync + Debug {
-
     fn get_columns(&self) -> Option<&Vec<OutputColumn>>;
 
     /// 通用初始化逻辑
     fn init(&mut self, _context: &mut OutputContext) {}
 
     async fn before_run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
+        //注册日志
+        register(&self.name().clone()).await;
         Ok(())
     }
 
@@ -66,11 +66,9 @@ impl Close for DelegatedOutput {
 
 #[async_trait]
 impl Output for DelegatedOutput {
-
     fn get_columns(&self) -> Option<&Vec<OutputColumn>> {
         return None;
     }
-
 
     fn name(&self) -> &str {
         return &self.name;
@@ -104,16 +102,13 @@ impl DelegatedOutput {
     }
 }
 
-
 pub struct OutputContext {
-    pub concurrency:usize
+    pub concurrency: usize,
 }
 
 impl OutputContext {
-    pub fn new(concurrency:usize) -> Self {
-        Self {
-            concurrency
-        }
+    pub fn new(concurrency: usize) -> Self {
+        Self { concurrency }
     }
 }
 

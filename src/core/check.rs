@@ -1,3 +1,7 @@
+use std::net::{IpAddr, Ipv6Addr};
+
+use chrono::{DateTime, NaiveTime, NaiveDate, NaiveDateTime};
+
 use super::cli::Cli;
 
 /// 单次默认提交数量
@@ -93,3 +97,64 @@ pub fn check_batch_size(cli: &mut Cli) {
         }
     }
 }
+
+
+pub fn is_null(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_string(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_country(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_city(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_phone(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_password(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_username(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_ipv4(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_email(val: &str) -> bool {
+    todo!()
+}
+
+pub fn is_ipv6(val: &str) -> bool {
+    Ipv6Addr::from(val)
+}
+
+pub fn is_timestamp(val: &str) -> bool {
+    let mut ok = false;
+    for format in DATE_FORMATS {
+        ok = DateTime::parse_from_str(val, format).is_ok()
+    }
+
+    ok
+}
+
+pub fn is_datetime(val: &str) -> bool {
+    let mut ok = false;
+    for format in DATE_FORMATS {
+        ok = DateTime::parse_from_str(val, format).is_ok()
+    }
+
+    ok
+}
+
+pub static DATE_FORMATS: [&'static str; 1] = ["yyyy-MM-dd HH:mm:ss"];

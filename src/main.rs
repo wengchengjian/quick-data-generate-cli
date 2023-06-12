@@ -33,7 +33,6 @@ async fn main() -> Result<()> {
 use output::{Close, DelegatedOutput, OutputContext};
 
 pub fn create_context(concurrency: usize) -> OutputContext {
-
     return OutputContext::new(concurrency);
 }
 
@@ -46,7 +45,6 @@ pub async fn create_delegate_output(cli: Cli) -> (DelegatedOutput, OutputContext
     if outputs.len() == 0 {
         panic!("无任何输出源可以执行");
     }
-
 
     STATICS_LOGGER.lock().await.interval(interval);
 

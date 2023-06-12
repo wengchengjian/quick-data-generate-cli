@@ -1,4 +1,4 @@
-use crate::util::{get_current_date, get_system_usage, format_memory};
+use crate::util::{format_memory, get_current_date, get_system_usage};
 use std::{
     collections::HashMap,
     io::Write,

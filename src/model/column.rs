@@ -24,6 +24,23 @@ impl OutputColumn {
             .map(|column| (column.name.as_str(), &column.data_type))
             .collect()
     }
+    /// 从schema中获取columns定义，允许类型未知
+    pub fn get_columns_from_schema(value: &serde_json::Value) -> Vec<OutputColumn> {
+        if let Some(map) = value.as_object() {
+            return map
+                .into_iter()
+                .map(|(key, value)| OutputColumn {
+                    name: key.clone(),
+                    data_type: match DataTypeEnum::from_str(value.as_str().unwrap()) {
+                        Ok(dt) => dt,
+                        Err(_) => DataTypeEnum::Unknown,
+                    },
+                })
+                .collect();
+        } else {
+            vec![]
+        }
+    }
 
     /// 从schema中获取columns定义，允许类型未知
     pub fn get_columns_from_value(value: &serde_json::Value) -> Vec<OutputColumn> {
@@ -105,6 +122,12 @@ pub enum DataTypeEnum {
     IPv4,
     IPv6,
     Unknown,
+}
+
+impl DataTypeEnum {
+    pub fn parse_type_from_str(val: &str) -> DataTypeEnum {
+        return parse_type(val);
+    }
 }
 
 impl DataTypeEnum {

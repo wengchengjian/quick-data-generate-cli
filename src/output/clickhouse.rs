@@ -51,7 +51,6 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for ClickHouseOutput {
-
     fn get_columns(&self) -> Option<&Vec<OutputColumn>> {
         return Some(&self.columns);
     }

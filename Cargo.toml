@@ -26,7 +26,7 @@ mysql_common = { path="./submodule/rust_mysql_common" }
 futures = "0.3.28"
 regex = "1.8.4"
 thiserror = "1.0.40"
-kafka = "0.9.0"
+rdkafka = { version = "0.32.2", features = ["cmake-build"] }
 winapi = {version = "0.3.9", features=["winuser","minwindef"]}
 [dev-dependencies]
 tokio-test = "*"

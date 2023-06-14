@@ -270,7 +270,7 @@ pub struct MysqlArgs {
     pub concurrency: usize,
 }
 
-use super::{Close, OutputContext, Output};
+use super::{Close, Output, OutputContext};
 
 #[derive(Debug)]
 pub struct MysqlOutput {

@@ -172,10 +172,6 @@ fn get_elapsed_time() -> i64 {
     }
 }
 
-fn filetime_to_large_int(ft: &FILETIME) -> i64 {
-    ((ft.dwHighDateTime as i64) << 32) | (ft.dwLowDateTime as i64)
-}
-
 use winapi::um::psapi::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 use winapi::um::winnt::HANDLE;
 

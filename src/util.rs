@@ -2,7 +2,7 @@ use rand::{rngs::ThreadRng, Rng};
 use std::{
     cell::RefCell,
     process::Output,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use tokio::process::Command;
@@ -110,52 +110,65 @@ use winapi::{
     shared::minwindef::FILETIME,
     um::{
         processthreadsapi::{GetCurrentProcess, GetProcessTimes},
+        sysinfoapi::GetSystemTimeAsFileTime,
         winnt::LARGE_INTEGER,
     },
 };
 
-pub async fn get_cpu_info_on_windows() -> f32 {
-    let mut creation_time = FILETIME::default();
-    let mut exit_time = FILETIME::default();
-    let mut kernel_time = FILETIME::default();
-    let mut user_time = FILETIME::default();
+fn get_performance_frequency() -> i64 {
+    let mut frequency = LARGE_INTEGER::default();
+    unsafe {
+        winapi::um::profileapi::QueryPerformanceFrequency(&mut frequency);
+        frequency.QuadPart().clone()
+    }
+}
+
+fn filetime_to_u64(ft: FILETIME) -> u64 {
+    let mut res = (ft.dwHighDateTime as u64) << 32;
+    res |= ft.dwLowDateTime as u64;
+    res
+}
+
+pub fn get_cpu_time() -> (f64, f64) {
+    let mut lp_creation_time = FILETIME::default();
+    let mut lp_exit_time = FILETIME::default();
+    let mut lp_kernel_time = FILETIME::default();
+    let mut lp_user_time = FILETIME::default();
 
     unsafe {
         GetProcessTimes(
             GetCurrentProcess(),
-            &mut creation_time,
-            &mut exit_time,
-            &mut kernel_time,
-            &mut user_time,
+            &mut lp_creation_time,
+            &mut lp_exit_time,
+            &mut lp_kernel_time,
+            &mut lp_user_time,
         );
     }
 
-    let kernel_time = filetime_to_large_int(&kernel_time);
-    let user_time = filetime_to_large_int(&user_time);
+    let kernel_time = filetime_to_u64(lp_kernel_time);
+    let user_time = filetime_to_u64(lp_user_time);
+    let system_time = get_elapsed_time();
+    let frequency = get_performance_frequency();
 
-    let mut sys_time = LARGE_INTEGER::default();
+    let total_time = (kernel_time + user_time) as f64 / frequency as f64;
+    let elapsed_time = system_time as f64 / frequency as f64;
+
+    (total_time as f64, elapsed_time as f64)
+}
+
+pub async fn get_cpu_info_on_windows() -> f32 {
+    let (total_time, elapsed_time) = get_cpu_time();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let (total_time2, elapsed_tim2) = get_cpu_time();
+
+    ((total_time2 - total_time) / (elapsed_tim2 - elapsed_time) * 100.0) as f32
+}
+
+fn get_elapsed_time() -> i64 {
+    let mut time = LARGE_INTEGER::default();
     unsafe {
-        let success = winapi::um::profileapi::QueryPerformanceCounter(&mut sys_time);
-        if success == 0 {
-            panic!("QueryPerformanceCounter failed");
-        }
-    }
-
-    let mut sys_time_freq = LARGE_INTEGER::default();
-    unsafe {
-        let success = winapi::um::profileapi::QueryPerformanceFrequency(&mut sys_time_freq);
-        if success == 0 {
-            panic!("QueryPerformanceFrequency failed");
-        }
-    }
-    unsafe {
-        let sys_time = sys_time.QuadPart().clone() as f64;
-        let sys_time_freq = sys_time_freq.QuadPart().clone() as f64;
-
-        let total_cpu_time = (kernel_time + user_time) as f64 / sys_time_freq * 100.0;
-        let wall_clock_time = sys_time / sys_time_freq * (100.0) as f64;
-
-        (total_cpu_time / wall_clock_time) as f32
+        winapi::um::profileapi::QueryPerformanceCounter(&mut time);
+        time.QuadPart().clone()
     }
 }
 

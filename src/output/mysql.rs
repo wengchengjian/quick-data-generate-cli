@@ -70,6 +70,17 @@ impl MysqlOutput {
             .map_err(|err| Error::Other(err.into()))?;
         Ok(res)
     }
+
+    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn Output>> {
+        let res = MysqlOutput {
+            name: "mysql".into(),
+            args: cli.try_into()?,
+            shutdown: AtomicBool::new(false),
+            columns: vec![],
+        };
+
+        Ok(Box::new(res))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -259,7 +270,7 @@ pub struct MysqlArgs {
     pub concurrency: usize,
 }
 
-use super::{Close, OutputContext};
+use super::{Close, OutputContext, Output};
 
 #[derive(Debug)]
 pub struct MysqlOutput {
@@ -272,7 +283,7 @@ pub struct MysqlOutput {
     pub shutdown: AtomicBool,
 }
 
-impl TryFrom<Cli> for MysqlOutput {
+impl TryFrom<Cli> for Box<MysqlOutput> {
     type Error = Box<dyn std::error::Error>;
 
     fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
@@ -283,7 +294,7 @@ impl TryFrom<Cli> for MysqlOutput {
             columns: vec![],
         };
 
-        Ok(res)
+        Ok(Box::new(res))
     }
 }
 

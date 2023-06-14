@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
@@ -9,10 +9,15 @@ use std::{
 use super::{Close, Output, OutputContext};
 use crate::{
     core::{
-        error::{Error, Result},
+        cli::Cli,
+        error::{Error, IoError, Result},
         shutdown::Shutdown,
     },
-    model::column::OutputColumn, task::kafka::KafkaTask,
+    model::{
+        column::OutputColumn,
+        schema::{ChannelSchema, OutputSchema},
+    },
+    task::kafka::KafkaTask,
 };
 use async_trait::async_trait;
 use rdkafka::{
@@ -22,7 +27,7 @@ use rdkafka::{
 };
 use tokio::{
     sync::{broadcast, mpsc, Semaphore},
-    time::{timeout, Timeout},
+    time::timeout,
 };
 
 #[derive(Debug)]
@@ -41,13 +46,30 @@ pub struct KafkaArgs {
 
     pub topic: String,
 
-    pub partitions: Option<Vec<i32>>,
-
     pub concurrency: usize,
 
     pub batch: usize,
 
     pub count: usize,
+}
+
+impl KafkaArgs {
+    pub fn from_value(meta: serde_json::Value, channel: ChannelSchema) -> Result<KafkaArgs> {
+        Ok(KafkaArgs {
+            host: meta["host"]
+                .as_str()
+                .ok_or(Error::Io(IoError::ArgNotFound("host".to_string())))?
+                .to_string(),
+            port: meta["port"].as_u64().unwrap_or(3306) as u16,
+            batch: channel.batch,
+            count: channel.count,
+            concurrency: channel.concurrency,
+            topic: meta["topic"]
+                .as_str()
+                .ok_or(Error::Io(IoError::ArgNotFound("topic".to_string())))?
+                .to_string(),
+        })
+    }
 }
 
 pub static DEFAULT_GROUP: &'static str = "vFBiQ6aasB";
@@ -57,7 +79,15 @@ impl KafkaOutput {
         let host = format!("{}:{}", self.args.host, self.args.port);
         return ClientConfig::new()
             .set("bootstrap.servers", host)
-            .set("message.timeout.ms", "5000")
+            .set("message.timeout.ms", "10000")
+            .set("acks", "0")
+            .set("compression.codec", "lz4")
+            .set("socket.send.buffer.bytes", "67108864")
+            .set("socket.keepalive.enable", "true")
+            .set("batch.num.messages", "32768")
+            .set("linger.ms", "0")
+            .set("request.timeout.ms", "100")
+            .set("max.in.flight.requests.per.connection", "100")
             .create()
             .map_err(From::from);
     }
@@ -66,7 +96,7 @@ impl KafkaOutput {
     pub async fn get_columns_define(
         consumer: StreamConsumer<DefaultConsumerContext>,
     ) -> Vec<OutputColumn> {
-        match timeout(Duration::from_millis(5), consumer.recv()).await {
+        match timeout(Duration::from_secs(5), consumer.recv()).await {
             Ok(result) => match result {
                 Ok(message) => {
                     let payload = match message.payload_view::<str>() {
@@ -114,6 +144,17 @@ impl KafkaOutput {
 
         return Ok(consumer);
     }
+
+    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn Output>> {
+        let res = KafkaOutput {
+            name: "kafka".into(),
+            args: cli.try_into()?,
+            shutdown: AtomicBool::new(false),
+            columns: vec![],
+        };
+
+        Ok(Box::new(res))
+    }
 }
 
 #[async_trait]
@@ -127,7 +168,6 @@ impl Output for KafkaOutput {
     }
 
     async fn run(&mut self, _context: &mut OutputContext) -> Result<()> {
-
         // 获取生产者
         let topic = self.args.topic.as_str();
         let ref topics = vec![topic];
@@ -144,14 +184,18 @@ impl Output for KafkaOutput {
 
         println!("{} will running...", self.name);
 
+        let count_rc = Arc::new(AtomicI64::new(self.args.count as i64));
+
         let concurrency = Arc::new(Semaphore::new(self.args.concurrency));
-        while !self.shutdown.load(Ordering::SeqCst) {
+        while !self.shutdown.load(Ordering::SeqCst) && count_rc.load(Ordering::SeqCst) >= 0 {
             let permit = concurrency.clone().acquire_owned().await.unwrap();
 
             // 获取生产者
             let producer = self.get_provider()?;
             let columns = columns.clone();
             let shutdown = Shutdown::new(notify_shutdown.subscribe());
+
+            let count_rc = count_rc.clone();
 
             let mut task = KafkaTask::from_args(
                 self.name.clone(),
@@ -160,6 +204,7 @@ impl Output for KafkaOutput {
                 columns,
                 shutdown_complete_tx.clone(),
                 shutdown,
+                count_rc,
             );
 
             tokio::spawn(async move {
@@ -183,9 +228,54 @@ impl Output for KafkaOutput {
     }
 }
 
+impl TryFrom<Cli> for Box<KafkaOutput> {
+    type Error = Box<dyn std::error::Error>;
+
+    fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
+        let res = KafkaOutput {
+            name: "kafka".into(),
+            args: value.try_into()?,
+            shutdown: AtomicBool::new(false),
+            columns: vec![],
+        };
+
+        Ok(Box::new(res))
+    }
+}
+
+impl TryInto<KafkaArgs> for Cli {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<KafkaArgs, Self::Error> {
+        Ok(KafkaArgs {
+            host: self.host,
+            port: self.port.unwrap_or(9092),
+            batch: self.batch.unwrap_or(5000),
+            count: self.count.unwrap_or(isize::max_value() as usize),
+            concurrency: self.concurrency.unwrap_or(1),
+            topic: self
+                .topic
+                .ok_or(Error::Io(IoError::ArgNotFound("topic".to_owned())))?,
+        })
+    }
+}
+
+impl TryFrom<OutputSchema> for KafkaOutput {
+    type Error = Error;
+
+    fn try_from(value: OutputSchema) -> std::result::Result<Self, Self::Error> {
+        Ok(KafkaOutput {
+            name: "默认kafka输出".to_string(),
+            args: KafkaArgs::from_value(value.meta, value.channel)?,
+            shutdown: AtomicBool::new(false),
+            columns: OutputColumn::get_columns_from_schema(&value.columns),
+        })
+    }
+}
+
 #[async_trait]
 impl Close for KafkaOutput {
     async fn close(&mut self) -> Result<()> {
-        todo!()
+        Ok(())
     }
 }

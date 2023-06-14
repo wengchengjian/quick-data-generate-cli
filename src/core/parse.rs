@@ -11,7 +11,7 @@ use crate::{
         column::DataTypeEnum,
         schema::{OutputSchema, Schema},
     },
-    output::{self, mysql::MysqlOutput},
+    output::{self, kafka::KafkaOutput, mysql::MysqlOutput},
 };
 
 impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
@@ -33,6 +33,11 @@ pub fn parse_output_from_schema(
             output.name = name;
             Ok(Box::new(output))
         }
+        output::OutputEnum::Kafka => {
+            let mut output = KafkaOutput::try_from(schema)?;
+            output.name = name;
+            Ok(Box::new(output))
+        }
     }
 }
 
@@ -47,21 +52,16 @@ pub fn parse_outputs_from_schema(schema: Schema) -> Result<Vec<Box<dyn output::O
 
 pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
     let output_enum = cli.output;
-
-    let output = match output_enum {
+    match output_enum {
         Some(output) => match output {
-            output::OutputEnum::Mysql => TryInto::<MysqlOutput>::try_into(cli),
+            output::OutputEnum::Kafka => return KafkaOutput::from_cli(cli).ok(),
+
+            output::OutputEnum::Mysql => return MysqlOutput::from_cli(cli).ok(),
         },
         None => {
             return None;
         }
     };
-    if let Ok(output) = output {
-        let res = Box::new(output);
-        Some(res)
-    } else {
-        None
-    }
 }
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
@@ -70,6 +70,16 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
     let mut outputs = vec![];
     let interval = cli.interval;
     let mut concurrency = cli.concurrency;
+
+    let _ = cli.output.insert(output::OutputEnum::Kafka);
+    let _ = cli.topic.insert("CountryChService".to_string());
+    cli.host = "192.168.180.217".to_owned();
+    //    let _ = cli.user.insert("root".to_string());
+    //    let _ = cli.password.insert("wcj520600".to_string());
+    let _ = cli.batch.insert(2000);
+    // let _ = cli.count.insert(1000000);
+    let _ = cli.concurrency.insert(6);
+    // let _ = cli.interval.insert(1);
 
     if let Some(schema_path) = &cli.schema {
         let schema = parse_schema(schema_path).unwrap();
@@ -91,18 +101,9 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
         outputs.append(&mut schema_outputs);
     }
 
-    //    let _ = cli.output.insert(output::OutputEnum::Mysql);
-    //    let _ = cli.database.insert("tests".to_string());
-    //    let _ = cli.table.insert("UPGRADE_PACKET_INFO".to_string());
-    //    let _ = cli.user.insert("root".to_string());
-    //    let _ = cli.password.insert("wcj520600".to_string());
-    //    let _ = cli.batch.insert(10);
-    //    let _ = cli.concurrency.insert(1);
-
     if let Some(output) = parse_output_from_cli(cli) {
         outputs.push(output);
     }
-
     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
 
     concurrency = concurrency.and_then(|concurrency| {
@@ -122,13 +123,44 @@ use super::check::*;
 
 pub fn parse_type(val: &serde_json::Value) -> DataTypeEnum {
     let val = val;
+    if val.is_number() {
+        if val.is_u64() {
+            let val = val.as_u64().map(|v| format!("{}", v));
+            let d = "0".to_owned();
 
-    if val.is_u64() {
-        return DataTypeEnum::UInt64;
-    }
+            let val = val.unwrap_or(d);
+            if is_u8(&val) {
+                return DataTypeEnum::UInt8;
+            }
+            if is_u16(&val) {
+                return DataTypeEnum::UInt16;
+            }
+            if is_u32(&val) {
+                return DataTypeEnum::UInt32;
+            }
+            if is_u64(&val) {
+                return DataTypeEnum::UInt64;
+            }
+        }
 
-    if val.is_i64() {
-        return DataTypeEnum::Int64;
+        if val.is_i64() {
+            let val = val.as_u64().map(|v| format!("{}", v));
+            let d = "0".to_owned();
+
+            let val = val.unwrap_or(d);
+            if is_i8(&val) {
+                return DataTypeEnum::Int8;
+            }
+            if is_i16(&val) {
+                return DataTypeEnum::Int16;
+            }
+            if is_i32(&val) {
+                return DataTypeEnum::Int32;
+            }
+            if is_i64(&val) {
+                return DataTypeEnum::Int64;
+            }
+        }
     }
 
     if val.is_f64() {
@@ -145,30 +177,6 @@ pub fn parse_type(val: &serde_json::Value) -> DataTypeEnum {
 
     let val = val.as_str().unwrap_or("null");
 
-    if is_u8(val) {
-        return DataTypeEnum::UInt8;
-    }
-    if is_u16(val) {
-        return DataTypeEnum::UInt16;
-    }
-    if is_u32(val) {
-        return DataTypeEnum::UInt32;
-    }
-    if is_u64(val) {
-        return DataTypeEnum::UInt64;
-    }
-    if is_i8(val) {
-        return DataTypeEnum::Int8;
-    }
-    if is_i16(val) {
-        return DataTypeEnum::Int16;
-    }
-    if is_i32(val) {
-        return DataTypeEnum::Int32;
-    }
-    if is_i64(val) {
-        return DataTypeEnum::Int64;
-    }
     if is_datetime(val) {
         return DataTypeEnum::DateTime;
     }

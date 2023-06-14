@@ -3,7 +3,7 @@ use mysql_async::{
     prelude::{BatchQuery, WithParams},
     Conn,
 };
-use sea_query::{tests_cfg::Glyph, Query};
+
 use tokio::sync::mpsc;
 
 use crate::{

@@ -1,20 +1,27 @@
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicI64, AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use async_trait::async_trait;
-use mysql_async::{
-    prelude::{BatchQuery, WithParams},
-    Conn,
-};
 use rdkafka::{
-    producer::{FutureProducer, FutureRecord, Producer},
+    producer::{FutureProducer, FutureRecord},
     util::Timeout,
 };
 use tokio::sync::mpsc;
 
 use crate::{
-    core::{fake::{get_fake_data, get_random_string}, log::incr_log, shutdown::Shutdown, error::Error},
+    core::{
+        error::Error,
+        fake::{get_fake_data, get_random_string},
+        log::incr_log,
+        shutdown::Shutdown,
+    },
     model::column::OutputColumn,
-    output::{kafka::KafkaArgs, mysql::MysqlArgs, Close},
+    output::{kafka::KafkaArgs, Close},
 };
 
 pub struct KafkaTask {
@@ -34,36 +41,6 @@ impl Close for KafkaTask {
     }
 }
 impl KafkaTask {
-    pub fn new(
-        producer: FutureProducer,
-        name: String,
-        batch: usize,
-        count: usize,
-        columns: Vec<OutputColumn>,
-        shutdown_sender: mpsc::Sender<()>,
-        shutdown: Shutdown,
-        topic: String,
-    ) -> KafkaTask {
-        let columns2 = columns.clone();
-        let name2 = name.clone();
-        KafkaTask {
-            name,
-            batch,
-            count,
-            shutdown_sender,
-            shutdown,
-            columns,
-            executor: KafkaTaskExecutor {
-                topic,
-                producer,
-                batch: batch,
-                count: count,
-                columns: columns2,
-                task_name: name2,
-            },
-        }
-    }
-
     pub fn from_args(
         name: String,
         args: &KafkaArgs,
@@ -71,6 +48,7 @@ impl KafkaTask {
         columns: Vec<OutputColumn>,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
+        count_rc: Arc<AtomicI64>,
     ) -> Self {
         let columns2 = columns.clone();
         let name2 = name.clone();
@@ -83,11 +61,11 @@ impl KafkaTask {
             columns,
             executor: KafkaTaskExecutor {
                 batch: args.batch,
-                count: args.count,
+                count: count_rc,
                 columns: columns2,
                 task_name: name2,
                 producer,
-                topic: args.topic.clone()
+                topic: args.topic.clone(),
             },
         }
     }
@@ -96,9 +74,16 @@ impl KafkaTask {
         while !self.shutdown.is_shutdown() {
             tokio::select! {
                 res = self.executor.add_batch() => {
-                    if let Err(e) = res {
-                        println!("{:?}", e);
-                        break;
+                    match res {
+                        Err(e) => {
+                            println!("{:?}", e);
+                            break;
+                        },
+                        Ok(completed) => {
+                            if completed {
+                                break;
+                            }
+                        }
                     }
                 },
                 _ = self.shutdown.recv() => {
@@ -112,7 +97,7 @@ impl KafkaTask {
 
 pub struct KafkaTaskExecutor {
     pub batch: usize,
-    pub count: usize,
+    pub count: Arc<AtomicI64>,
     pub columns: Vec<OutputColumn>,
     pub task_name: String,
     pub producer: FutureProducer,
@@ -120,40 +105,42 @@ pub struct KafkaTaskExecutor {
 }
 
 impl KafkaTaskExecutor {
-    pub fn new(
-        producer: FutureProducer,
-        batch: usize,
-        count: usize,
-        columns: Vec<OutputColumn>,
-        task_name: String,
-        topic: String,
-    ) -> Self {
-        Self {
-            producer,
-            batch,
-            columns,
-            count,
-            task_name,
-            topic,
-        }
-    }
-
-    pub async fn add_batch(&mut self) -> crate::core::error::Result<()> {
+    pub async fn add_batch(&mut self) -> crate::core::error::Result<bool> {
+        let mut num = 0;
         for _i in 0..self.batch {
+            if self.count.load(Ordering::SeqCst) <= 0 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                break;
+            }
             let data = get_fake_data(&self.columns);
             let key = get_random_string();
-            
+
             let data = serde_json::to_string(&data).unwrap();
+            if data.len() == 0 {
+                continue;
+            }
             self.producer
                 .send(
-                    FutureRecord::to(self.topic.as_str()).key(&key).payload(&data),
-                    Timeout::After(Duration::from_secs(0)),
+                    FutureRecord::to(self.topic.as_str())
+                        .key(&key)
+                        .payload(&data),
+                    Timeout::Never,
                 )
-                .await.map_err(|(e,_m)| Error::from(e))?;
+                .await
+                .map_err(|(e, _m)| Error::from(e))?;
+            num += 1;
+            self.count.fetch_sub(1, Ordering::SeqCst);
+            if num % 100 == 0 {
+                incr_log(&self.task_name, num, 1).await;
+                num = 0;
+            }
         }
-
-        incr_log(&self.task_name, self.batch, 1).await;
-        
-        Ok(())
+        if num != 0 {
+            incr_log(&self.task_name, num, 1).await;
+        }
+        match self.count.load(Ordering::SeqCst) {
+            x if x <= 0 => Ok(true),
+            _ => Ok(false),
+        }
     }
 }

@@ -1,12 +1,12 @@
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, NaiveDateTime};
 use regex::Regex;
 
-use crate::model::column::DataTypeEnum;
+
 
 use super::cli::Cli;
 

@@ -25,7 +25,9 @@ pub trait Output: Send + Close + Sync + Debug {
 
     async fn before_run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
         //注册日志
-        register(&self.name().clone()).await;
+        if !self.name().eq("delegate") {
+            register(&self.name().clone()).await;
+        }
         Ok(())
     }
 
@@ -78,7 +80,7 @@ impl Output for DelegatedOutput {
         let outputs = &mut self.outputs;
 
         for output in outputs {
-            output.run(context).await?;
+            output.execute(context).await?;
         }
         Ok(())
     }
@@ -117,7 +119,7 @@ pub enum OutputEnum {
     // ClickHouse,
     Mysql,
     //
-    //    Kafka,
+    Kafka,
     //
     //    ElasticSearch,
     //
@@ -132,13 +134,12 @@ impl FromStr for OutputEnum {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.to_lowercase();
 
-        let s = s.as_str().to_lowercase();
         let s = s.as_str();
 
         match s {
             // "clickhouse" => Ok(OutputEnum::ClickHouse),
             "mysql" => Ok(OutputEnum::Mysql),
-            //            "kafka" => Ok(OutputEnum::Kafka),
+            "kafka" => Ok(OutputEnum::Kafka),
             //            "elasticsearch" => Ok(OutputEnum::ElasticSearch),
             //            "csv" => Ok(OutputEnum::CSV),
             //            "sqlserver" => Ok(OutputEnum::SqlServer),

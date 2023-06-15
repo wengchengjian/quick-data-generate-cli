@@ -11,17 +11,17 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord},
     util::Timeout,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     core::{
         error::Error,
         fake::{get_fake_data, get_random_string},
         log::incr_log,
-        shutdown::Shutdown,
+        shutdown::Shutdown, limit::token::TokenBuketLimiter,
     },
     model::column::OutputColumn,
-    output::{kafka::KafkaArgs, Close},
+    output::{kafka::KafkaArgs, Close, OutputContext},
 };
 
 pub struct KafkaTask {
@@ -49,6 +49,7 @@ impl KafkaTask {
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
         count_rc: Arc<AtomicI64>,
+        limiter: Arc<Mutex<TokenBuketLimiter>>
     ) -> Self {
         let columns2 = columns.clone();
         let name2 = name.clone();
@@ -64,6 +65,7 @@ impl KafkaTask {
                 count: count_rc,
                 columns: columns2,
                 task_name: name2,
+                limiter,
                 producer,
                 topic: args.topic.clone(),
             },
@@ -100,6 +102,7 @@ pub struct KafkaTaskExecutor {
     pub count: Arc<AtomicI64>,
     pub columns: Vec<OutputColumn>,
     pub task_name: String,
+    pub limiter: Arc<Mutex<TokenBuketLimiter>>,
     pub producer: FutureProducer,
     pub topic: String,
 }
@@ -108,18 +111,19 @@ impl KafkaTaskExecutor {
     pub async fn add_batch(&mut self) -> crate::core::error::Result<bool> {
         let mut num = 0;
         for _i in 0..self.batch {
-            if self.count.load(Ordering::SeqCst) <= 0 {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                break;
-            }
-            let data = get_fake_data(&self.columns);
-            let key = get_random_string();
+            if self.limiter.lock().await.try_acquire().await {
+                if self.count.load(Ordering::SeqCst) <= 0 {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    break;
+                }
+                let data = get_fake_data(&self.columns);
+                let key = get_random_string();
 
-            let data = serde_json::to_string(&data).unwrap();
-            if data.len() == 0 {
-                continue;
-            }
-            self.producer
+                let data = serde_json::to_string(&data).unwrap();
+                if data.len() == 0 {
+                    continue;
+                }
+                self.producer
                 .send(
                     FutureRecord::to(self.topic.as_str())
                         .key(&key)
@@ -128,12 +132,14 @@ impl KafkaTaskExecutor {
                 )
                 .await
                 .map_err(|(e, _m)| Error::from(e))?;
-            num += 1;
-            self.count.fetch_sub(1, Ordering::SeqCst);
-            if num % 100 == 0 {
-                incr_log(&self.task_name, num, 1).await;
-                num = 0;
+                num += 1;
+                self.count.fetch_sub(1, Ordering::SeqCst);
+                if num % 100 == 0 {
+                    incr_log(&self.task_name, num, 1).await;
+                    num = 0;
+                }
             }
+
         }
         if num != 0 {
             incr_log(&self.task_name, num, 1).await;

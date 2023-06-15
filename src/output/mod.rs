@@ -1,9 +1,12 @@
 use async_trait::async_trait;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
-use crate::{core::log::register, model::column::OutputColumn};
+use crate::{
+    core::{limit::token::TokenBuketLimiter, log::register},
+    model::column::OutputColumn,
+};
 
 pub mod clickhouse;
 pub mod csv;
@@ -106,11 +109,17 @@ impl DelegatedOutput {
 
 pub struct OutputContext {
     pub concurrency: usize,
+    pub limit: Option<usize>,
+    pub skip: bool,
 }
 
 impl OutputContext {
-    pub fn new(concurrency: usize) -> Self {
-        Self { concurrency }
+    pub fn new(concurrency: usize, limit: Option<usize>, skip: bool) -> Self {
+        Self {
+            concurrency,
+            limit,
+            skip,
+        }
     }
 }
 

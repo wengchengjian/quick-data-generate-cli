@@ -65,4 +65,8 @@ pub struct Cli {
     /// 限流输出速度, 针对每一个输出源
     #[structopt(short, long)]
     pub limit: Option<usize>,
+
+    /// 是否跳过输出任务， 一般常用于只生成schema文件
+    #[structopt(short, long)]
+    pub skip: bool,
 }

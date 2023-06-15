@@ -9,8 +9,10 @@ use std::{
 use super::{Close, Output, OutputContext};
 use crate::{
     core::{
+        check::DEFAULT_LIMIT_SIZE,
         cli::Cli,
         error::{Error, IoError, Result},
+        limit::token::TokenBuketLimiter,
         shutdown::Shutdown,
     },
     model::{
@@ -26,7 +28,7 @@ use rdkafka::{
     ClientConfig, Message,
 };
 use tokio::{
-    sync::{broadcast, mpsc, Semaphore},
+    sync::{broadcast, mpsc, Mutex, Semaphore},
     time::timeout,
 };
 
@@ -167,7 +169,7 @@ impl Output for KafkaOutput {
         return &self.name;
     }
 
-    async fn run(&mut self, _context: &mut OutputContext) -> Result<()> {
+    async fn run(&mut self, context: &mut OutputContext) -> Result<()> {
         // 获取生产者
         let topic = self.args.topic.as_str();
         let ref topics = vec![topic];
@@ -179,13 +181,18 @@ impl Output for KafkaOutput {
 
         // 合并两个数组
         let columns = OutputColumn::merge_columns(schema_columns, &columns);
+
+        if context.skip {
+            return Ok(());
+        }
         let (notify_shutdown, _) = broadcast::channel::<()>(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
 
         println!("{} will running...", self.name);
+        let limit = context.limit.unwrap_or(DEFAULT_LIMIT_SIZE);
+        let limiter = Arc::new(Mutex::new(TokenBuketLimiter::new(limit, limit * 2)));
 
         let count_rc = Arc::new(AtomicI64::new(self.args.count as i64));
-
         let concurrency = Arc::new(Semaphore::new(self.args.concurrency));
         while !self.shutdown.load(Ordering::SeqCst) && count_rc.load(Ordering::SeqCst) >= 0 {
             let permit = concurrency.clone().acquire_owned().await.unwrap();
@@ -196,7 +203,7 @@ impl Output for KafkaOutput {
             let shutdown = Shutdown::new(notify_shutdown.subscribe());
 
             let count_rc = count_rc.clone();
-
+            let limiter = limiter.clone();
             let mut task = KafkaTask::from_args(
                 self.name.clone(),
                 &self.args,
@@ -205,6 +212,7 @@ impl Output for KafkaOutput {
                 shutdown_complete_tx.clone(),
                 shutdown,
                 count_rc,
+                limiter,
             );
 
             tokio::spawn(async move {

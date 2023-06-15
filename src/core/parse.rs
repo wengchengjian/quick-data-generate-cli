@@ -65,20 +65,29 @@ pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
 }
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
-pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, usize)> {
+pub fn parse_output(
+    cli: Cli,
+) -> Result<(
+    Vec<Box<dyn output::Output>>,
+    usize,
+    usize,
+    Option<usize>,
+    bool,
+)> {
     let mut cli = cli;
     let mut outputs = vec![];
     let interval = cli.interval;
     let mut concurrency = cli.concurrency;
 
     let _ = cli.output.insert(output::OutputEnum::Kafka);
-    let _ = cli.topic.insert("CountryChService".to_string());
+    let _ = cli.topic.insert("FileHttpLogPushService".to_string());
     cli.host = "192.168.180.217".to_owned();
     //    let _ = cli.user.insert("root".to_string());
     //    let _ = cli.password.insert("wcj520600".to_string());
     let _ = cli.batch.insert(2000);
     // let _ = cli.count.insert(1000000);
-    let _ = cli.concurrency.insert(6);
+    let _ = cli.concurrency.insert(1);
+    let _ = cli.limit.insert(2000);
     // let _ = cli.interval.insert(1);
 
     if let Some(schema_path) = &cli.schema {
@@ -100,6 +109,7 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
 
         outputs.append(&mut schema_outputs);
     }
+    let limit = cli.limit;
 
     if let Some(output) = parse_output_from_cli(cli) {
         outputs.push(output);
@@ -115,8 +125,8 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, us
     });
 
     let concurrency = concurrency.unwrap_or(MIN_THREAD_SIZE);
-
-    return Ok((outputs, interval, concurrency));
+    let skip = cli.skip;
+    return Ok((outputs, interval, concurrency, limit, skip));
 }
 
 use super::check::*;

@@ -29,6 +29,8 @@ pub static MIN_INTERVAL: usize = 1;
 // 最小任务执行线程数
 pub static MIN_THREAD_SIZE: usize = 1;
 
+pub static DEFAULT_LIMIT_SIZE: usize = 50000;
+
 /// 检查命令行参数，填充默认值
 pub fn check_args(cli: &mut Cli) {
     // 检查配置的线程数，建议不超过cpu核心数

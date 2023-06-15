@@ -22,6 +22,7 @@ pub struct SlideWindowLimiter {
 }
 
 impl SlideWindowLimiter {
+    #[allow(dead_code)]
     fn new(window_size: Duration, limit: usize, num: usize) -> Self {
         let mut counters = Vec::new();
         for _ in 0..num {

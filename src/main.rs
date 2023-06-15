@@ -1,7 +1,3 @@
-use std::sync::Arc;
-
-use crate::core::limit::token::TokenBuketLimiter;
-
 use crate::core::error::{Error, IoError};
 
 use crate::core::cli::Cli;
@@ -48,16 +44,13 @@ pub fn create_context(concurrency: usize, limit: Option<usize>, skip: bool) -> O
 pub async fn create_delegate_output(cli: Cli) -> Result<(DelegatedOutput, OutputContext)> {
     let cli_args = cli.clone();
     // 获取所有输出任务
-    let (outputs, interval, concurrency, limit, skip) =
-        parse_output(cli_args).expect("解析输出任务失败");
+    let (outputs, interval, context) = parse_output(cli_args).expect("解析输出任务失败");
 
     if outputs.len() == 0 {
         return Err(Error::Io(IoError::ArgNotFound("output".to_owned())));
     }
 
     STATICS_LOGGER.lock().await.interval(interval);
-
-    let context = create_context(concurrency, limit, skip);
 
     let output = DelegatedOutput::new(outputs);
 

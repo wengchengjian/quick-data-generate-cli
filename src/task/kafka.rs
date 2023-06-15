@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        atomic::{AtomicI64, AtomicU64, Ordering},
+        atomic::{AtomicI64, Ordering},
         Arc,
     },
     time::Duration,
@@ -17,12 +17,15 @@ use crate::{
     core::{
         error::Error,
         fake::{get_fake_data, get_random_string},
+        limit::token::TokenBuketLimiter,
         log::incr_log,
-        shutdown::Shutdown, limit::token::TokenBuketLimiter,
+        shutdown::Shutdown,
     },
     model::column::OutputColumn,
-    output::{kafka::KafkaArgs, Close, OutputContext},
+    output::{kafka::KafkaArgs, Close},
 };
+
+use super::Task;
 
 pub struct KafkaTask {
     pub name: String,
@@ -40,39 +43,10 @@ impl Close for KafkaTask {
         Ok(())
     }
 }
-impl KafkaTask {
-    pub fn from_args(
-        name: String,
-        args: &KafkaArgs,
-        producer: FutureProducer,
-        columns: Vec<OutputColumn>,
-        shutdown_sender: mpsc::Sender<()>,
-        shutdown: Shutdown,
-        count_rc: Arc<AtomicI64>,
-        limiter: Arc<Mutex<TokenBuketLimiter>>
-    ) -> Self {
-        let columns2 = columns.clone();
-        let name2 = name.clone();
-        Self {
-            name,
-            batch: args.batch,
-            count: args.count,
-            shutdown_sender,
-            shutdown,
-            columns,
-            executor: KafkaTaskExecutor {
-                batch: args.batch,
-                count: count_rc,
-                columns: columns2,
-                task_name: name2,
-                limiter,
-                producer,
-                topic: args.topic.clone(),
-            },
-        }
-    }
 
-    pub async fn run(&mut self) -> crate::Result<()> {
+#[async_trait]
+impl Task for KafkaTask {
+    async fn run(&mut self) -> crate::Result<()> {
         while !self.shutdown.is_shutdown() {
             tokio::select! {
                 res = self.executor.add_batch() => {
@@ -94,6 +68,39 @@ impl KafkaTask {
             };
         }
         Ok(())
+    }
+}
+
+impl KafkaTask {
+    pub fn from_args(
+        name: String,
+        args: &KafkaArgs,
+        producer: FutureProducer,
+        columns: Vec<OutputColumn>,
+        shutdown_sender: mpsc::Sender<()>,
+        shutdown: Shutdown,
+        count_rc: Arc<AtomicI64>,
+        limiter: Arc<Mutex<TokenBuketLimiter>>,
+    ) -> Self {
+        let columns2 = columns.clone();
+        let name2 = name.clone();
+        Self {
+            name,
+            batch: args.batch,
+            count: args.count,
+            shutdown_sender,
+            shutdown,
+            columns,
+            executor: KafkaTaskExecutor {
+                batch: args.batch,
+                count: count_rc,
+                columns: columns2,
+                task_name: name2,
+                limiter,
+                producer,
+                topic: args.topic.clone(),
+            },
+        }
     }
 }
 
@@ -124,14 +131,14 @@ impl KafkaTaskExecutor {
                     continue;
                 }
                 self.producer
-                .send(
-                    FutureRecord::to(self.topic.as_str())
-                        .key(&key)
-                        .payload(&data),
-                    Timeout::Never,
-                )
-                .await
-                .map_err(|(e, _m)| Error::from(e))?;
+                    .send(
+                        FutureRecord::to(self.topic.as_str())
+                            .key(&key)
+                            .payload(&data),
+                        Timeout::Never,
+                    )
+                    .await
+                    .map_err(|(e, _m)| Error::from(e))?;
                 num += 1;
                 self.count.fetch_sub(1, Ordering::SeqCst);
                 if num % 100 == 0 {
@@ -139,7 +146,6 @@ impl KafkaTaskExecutor {
                     num = 0;
                 }
             }
-
         }
         if num != 0 {
             incr_log(&self.task_name, num, 1).await;

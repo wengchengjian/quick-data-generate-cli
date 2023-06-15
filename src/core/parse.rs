@@ -6,12 +6,12 @@ use super::{
 use std::path::PathBuf;
 
 use crate::{
-    impl_func_is_primitive_by_parse,
+    create_context, impl_func_is_primitive_by_parse,
     model::{
         column::DataTypeEnum,
         schema::{OutputSchema, Schema},
     },
-    output::{self, kafka::KafkaOutput, mysql::MysqlOutput},
+    output::{self, kafka::KafkaOutput, mysql::MysqlOutput, OutputContext},
 };
 
 impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
@@ -65,15 +65,7 @@ pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
 }
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
-pub fn parse_output(
-    cli: Cli,
-) -> Result<(
-    Vec<Box<dyn output::Output>>,
-    usize,
-    usize,
-    Option<usize>,
-    bool,
-)> {
+pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, OutputContext)> {
     let mut cli = cli;
     let mut outputs = vec![];
     let interval = cli.interval;
@@ -110,6 +102,7 @@ pub fn parse_output(
         outputs.append(&mut schema_outputs);
     }
     let limit = cli.limit;
+    let skip = cli.skip;
 
     if let Some(output) = parse_output_from_cli(cli) {
         outputs.push(output);
@@ -125,8 +118,9 @@ pub fn parse_output(
     });
 
     let concurrency = concurrency.unwrap_or(MIN_THREAD_SIZE);
-    let skip = cli.skip;
-    return Ok((outputs, interval, concurrency, limit, skip));
+    let context = create_context(concurrency, limit, skip);
+
+    return Ok((outputs, interval, context));
 }
 
 use super::check::*;

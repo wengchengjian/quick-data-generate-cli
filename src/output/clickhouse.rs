@@ -47,55 +47,6 @@ impl Into<ClickHouseArgs> for Cli {
     }
 }
 
-use async_trait::async_trait;
-
-#[async_trait]
-impl super::Output for ClickHouseOutput {
-    fn get_columns(&self) -> Option<&Vec<OutputColumn>> {
-        return Some(&self.columns);
-    }
-    fn name(&self) -> &str {
-        return &self.name;
-    }
-
-    async fn run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
-        Ok(())
-        //        let client = self.connect();
-        //
-        //        let batch = self.args.batch;
-        //        let count = self.args.count;
-        //        let semaphore: Arc<Semaphore> = context.concurrency.clone();
-        //        let task_num = 0;
-        //        loop {
-        //            let permit = semaphore.acquire_owned().await.unwrap();
-        //
-        //            let task_name = format!("{}-task-{}", self.name, task_num);
-        //
-        //            let client = client.clone();
-        //            let mut task = ClickHouseTask::new(task_name, client, batch, count);
-        //            self.tasks.push(task);
-        //            let mut logger = self.logger;
-        //            tokio::spawn(async move {
-        //                if let Err(err) = task.run(&mut logger).await {
-        //                    println!("task run error: {}", err);
-        //                }
-        //
-        //                drop(permit);
-        //            });
-        //        }
-    }
-}
-
-#[async_trait]
-impl Close for ClickHouseOutput {
-    async fn close(&mut self) -> crate::Result<()> {
-        for task in &mut self.tasks {
-            task.close().await?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug)]
 pub struct ClickHouseArgs {
     pub host: String,
@@ -114,8 +65,6 @@ pub struct ClickHouseArgs {
 
     pub count: usize,
 }
-
-use super::{Close, OutputContext};
 
 #[derive(Debug)]
 pub struct ClickHouseOutput {

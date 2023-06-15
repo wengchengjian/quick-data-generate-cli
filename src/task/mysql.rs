@@ -1,16 +1,18 @@
 use async_trait::async_trait;
 use mysql_async::{
     prelude::{BatchQuery, WithParams},
-    Conn,
+    Pool,
 };
 
 use tokio::sync::mpsc;
 
 use crate::{
-    core::{fake::get_fake_data_mysql, log::incr_log, shutdown::Shutdown},
+    core::{error::Error, fake::get_fake_data_mysql, log::incr_log, shutdown::Shutdown},
     model::column::OutputColumn,
     output::{mysql::MysqlArgs, Close},
 };
+
+use super::Task;
 
 #[derive(Debug)]
 pub struct MysqlTask {
@@ -31,39 +33,31 @@ impl Close for MysqlTask {
         Ok(())
     }
 }
-impl MysqlTask {
-    pub fn new(
-        name: String,
-        conn: Conn,
-        batch: usize,
-        count: usize,
-        database: String,
-        table: String,
-        columns: Vec<OutputColumn>,
-        shutdown_sender: mpsc::Sender<()>,
-        shutdown: Shutdown,
-    ) -> MysqlTask {
-        let data2 = database.clone();
-        let table2: String = table.clone();
-        let columns2 = columns.clone();
-        let name2 = name.clone();
-        MysqlTask {
-            name,
-            batch: 2000,
-            count,
-            shutdown_sender,
-            shutdown,
-            columns,
-            table,
-            database,
-            executor: MysqlTaskExecutor::new(conn, batch, count, data2, table2, columns2, name2),
-        }
-    }
 
+#[async_trait]
+impl Task for MysqlTask {
+    async fn run(&mut self) -> crate::Result<()> {
+        let (columns_name, columns_name_val) = self.get_columns_name();
+
+        while !self.shutdown.is_shutdown() {
+            tokio::select! {
+                _ = self.executor.add_batch(columns_name.clone(), columns_name_val.clone()) => {
+
+                },
+                _ = self.shutdown.recv() => {
+                    continue;
+                }
+            };
+        }
+        Ok(())
+    }
+}
+
+impl MysqlTask {
     pub fn from_args(
         name: String,
         args: &MysqlArgs,
-        conn: Conn,
+        pool: Pool,
         columns: Vec<OutputColumn>,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
@@ -82,7 +76,7 @@ impl MysqlTask {
             shutdown,
             columns,
             executor: MysqlTaskExecutor::new(
-                conn, args.batch, args.count, data2, table2, columns2, name2,
+                pool, args.batch, args.count, data2, table2, columns2, name2,
             ),
         }
     }
@@ -101,29 +95,13 @@ impl MysqlTask {
         columns_name_val.pop();
         (columns_name, columns_name_val)
     }
-
-    pub async fn run(&mut self) -> crate::Result<()> {
-        let (columns_name, columns_name_val) = self.get_columns_name();
-
-        while !self.shutdown.is_shutdown() {
-            tokio::select! {
-                _ = self.executor.add_batch(columns_name.clone(), columns_name_val.clone()) => {
-
-                },
-                _ = self.shutdown.recv() => {
-                    continue;
-                }
-            };
-        }
-        Ok(())
-    }
 }
 
 #[derive(Debug)]
 pub struct MysqlTaskExecutor {
     pub database: String,
     pub table: String,
-    pub conn: Conn,
+    pub pool: Pool,
     pub batch: usize,
     pub count: usize,
     pub columns: Vec<OutputColumn>,
@@ -132,7 +110,7 @@ pub struct MysqlTaskExecutor {
 
 impl MysqlTaskExecutor {
     pub fn new(
-        conn: Conn,
+        pool: Pool,
         batch: usize,
         count: usize,
         database: String,
@@ -141,7 +119,7 @@ impl MysqlTaskExecutor {
         task_name: String,
     ) -> Self {
         Self {
-            conn,
+            pool,
             batch,
             columns,
             count,
@@ -152,6 +130,13 @@ impl MysqlTaskExecutor {
     }
 
     pub async fn add_batch(&mut self, columns_name: String, columns_name_val: String) {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|err| Error::Other(err.into()))
+            .unwrap();
+
         let mut params = vec![];
 
         for _i in 0..self.batch {
@@ -166,7 +151,7 @@ impl MysqlTaskExecutor {
             self.database, self.table, columns_name, columns_name_val
         );
 
-        if let Err(err) = insert_header.with(params).batch(&mut self.conn).await {
+        if let Err(err) = insert_header.with(params).batch(&mut conn).await {
             println!("insert error: {:?}", err);
         }
 

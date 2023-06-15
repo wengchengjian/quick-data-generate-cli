@@ -110,7 +110,6 @@ use winapi::{
     shared::minwindef::FILETIME,
     um::{
         processthreadsapi::{GetCurrentProcess, GetProcessTimes},
-        sysinfoapi::GetSystemTimeAsFileTime,
         winnt::LARGE_INTEGER,
     },
 };

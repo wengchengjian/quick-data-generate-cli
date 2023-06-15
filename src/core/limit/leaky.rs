@@ -1,17 +1,16 @@
 use std::{
-    cmp::{max, min},
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, SystemTime},
 };
 
 pub struct LeakyBuketLimiter {
     pub rate: usize,
-    
+
     pub burst: usize,
-    
+
     pub start: SystemTime,
-    
-    pub water: AtomicUsize
+
+    pub water: AtomicUsize,
 }
 
 impl LeakyBuketLimiter {
@@ -23,20 +22,21 @@ impl LeakyBuketLimiter {
             water: AtomicUsize::new(0),
         }
     }
-    
+
     fn refresh_water(&mut self) {
         let consum = self.start.elapsed().unwrap().as_millis();
-        
-        let sub = self.water.load(Ordering::SeqCst) as isize - ((consum as usize * self.rate) / 1000) as isize;
-        
-        if sub > 0{
+
+        let sub = self.water.load(Ordering::SeqCst) as isize
+            - ((consum as usize * self.rate) / 1000) as isize;
+
+        if sub > 0 {
             self.water.store(sub as usize, Ordering::SeqCst);
         } else {
             self.water.store(0, Ordering::SeqCst);
         }
         self.start = SystemTime::now();
     }
-    
+
     pub async fn try_acquire(&mut self) -> bool {
         self.refresh_water();
         if self.water.load(Ordering::SeqCst) < self.burst {
@@ -45,15 +45,15 @@ impl LeakyBuketLimiter {
         }
         return false;
     }
-    
-    pub async fn acquire(&mut self){
+
+    pub async fn acquire(&mut self) {
         loop {
             self.refresh_water();
             if self.water.load(Ordering::SeqCst) < self.burst {
                 self.water.fetch_add(1, Ordering::SeqCst);
                 break;
             }
-            
+
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
@@ -61,11 +61,11 @@ impl LeakyBuketLimiter {
 
 #[cfg(test)]
 mod tests {
-    
+
     use tokio_test::block_on;
 
     use super::*;
-    
+
     #[test]
     fn test_leaky_burst() {
         block_on(async {

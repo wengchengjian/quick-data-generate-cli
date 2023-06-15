@@ -1,11 +1,23 @@
 use async_trait::async_trait;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
-use std::{str::FromStr, sync::Arc};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc,
+    },
+};
+use tokio::sync::{broadcast, mpsc, Mutex, Semaphore};
 
 use crate::{
-    core::{limit::token::TokenBuketLimiter, log::register},
+    core::{
+        check::DEFAULT_LIMIT_SIZE, limit::token::TokenBuketLimiter, log::register,
+        shutdown::Shutdown,
+    },
     model::column::OutputColumn,
+    task::Task,
 };
 
 pub mod clickhouse;
@@ -21,8 +33,6 @@ pub trait Close {
 
 #[async_trait]
 pub trait Output: Send + Close + Sync + Debug {
-    fn get_columns(&self) -> Option<&Vec<OutputColumn>>;
-
     /// 通用初始化逻辑
     fn init(&mut self, _context: &mut OutputContext) {}
 
@@ -45,9 +55,140 @@ pub trait Output: Send + Close + Sync + Debug {
         self.after_run(context).await
     }
 
+    fn count(&self) -> usize {
+        return 0;
+    }
+
+    fn concurrency(&self) -> usize {
+        return 1;
+    }
+
     fn name(&self) -> &str;
 
-    async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()>;
+    fn columns(&self) -> Option<&Vec<OutputColumn>> {
+        return None;
+    }
+
+    async fn get_columns_define(&self) -> Option<Vec<OutputColumn>> {
+        return None;
+    }
+
+    async fn output_schema_to_dir(&self, column: &Vec<OutputColumn>) {
+        if column.len() == 0 {
+            return;
+        }
+
+        let filename = format!("{}.{}", self.name(), "json");
+
+        let mut path = home::home_dir().unwrap_or(PathBuf::from("./"));
+
+        path.push(filename);
+
+        match serde_json::to_string_pretty(column) {
+            Ok(content) => {
+                match tokio::fs::write(path, content).await {
+                    Ok(_) => {
+                        // nothing
+                    }
+                    Err(e) => {
+                        println!("写入字段定义文件失败:{}", e);
+                    }
+                };
+            }
+            Err(e) => {
+                println!("写入字段定义文件失败:{}", e);
+            }
+        }
+    }
+
+    fn get_output_task(
+        &self,
+        _columns: Vec<OutputColumn>,
+        _shutdown_complete_tx: mpsc::Sender<()>,
+        _shutdown: Shutdown,
+        _count_rc: Arc<AtomicI64>,
+        _limiter: Arc<Mutex<TokenBuketLimiter>>,
+    ) -> Option<Box<dyn Task>> {
+        return None;
+    }
+
+    fn is_shutdown(&self) -> bool {
+        return false;
+    }
+
+    ///执行流程
+    ///1. 获取字段定义
+    ///2. 生成输出任务
+    ///3. 等待任务执行完毕
+    async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
+        // 获取字段定义
+        let columns = self.get_columns_define().await.unwrap_or(vec![]);
+
+        let default_columns = Vec::new();
+
+        let schema_columns = self.columns().unwrap_or(&default_columns);
+
+        // 合并两个数组
+        let columns = OutputColumn::merge_columns(schema_columns, &columns);
+
+        // 写入字段定义文件
+        self.output_schema_to_dir(&columns).await;
+
+        if context.skip {
+            return Ok(());
+        }
+        let (notify_shutdown, _) = broadcast::channel::<()>(1);
+        let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
+
+        println!("{} will running...", self.name());
+        let limit = context.limit.unwrap_or(DEFAULT_LIMIT_SIZE);
+        let limiter = Arc::new(Mutex::new(TokenBuketLimiter::new(limit, limit * 2)));
+
+        let count_rc = Arc::new(AtomicI64::new(self.count() as i64));
+        let concurrency = Arc::new(Semaphore::new(self.concurrency()));
+        while !self.is_shutdown() && count_rc.load(Ordering::SeqCst) >= 0 {
+            let permit = concurrency.clone().acquire_owned().await.unwrap();
+
+            let columns = columns.clone();
+            let shutdown = Shutdown::new(notify_shutdown.subscribe());
+
+            let count_rc = count_rc.clone();
+            let limiter = limiter.clone();
+
+            let task = self.get_output_task(
+                columns,
+                shutdown_complete_tx.clone(),
+                shutdown,
+                count_rc,
+                limiter,
+            );
+
+            match task {
+                Some(mut task) => {
+                    tokio::spawn(async move {
+                        if let Err(err) = task.run().await {
+                            println!("task run error: {}", err);
+                        }
+                        drop(permit);
+                    });
+                }
+                None => {
+                    //nothing
+                }
+            }
+        }
+
+        // When `notify_shutd4own` is dropped, all tasks which have `subscribe`d will
+        // receive the shutdown signal and can exit
+        drop(notify_shutdown);
+        // Drop final `Sender` so the `Receiver` below can complete
+        drop(shutdown_complete_tx);
+        // 等待所有的future执行完毕
+        // futures::future::join_all(futures).await;
+        let _ = shutdown_complete_rx.recv().await;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -71,12 +212,8 @@ impl Close for DelegatedOutput {
 
 #[async_trait]
 impl Output for DelegatedOutput {
-    fn get_columns(&self) -> Option<&Vec<OutputColumn>> {
-        return None;
-    }
-
     fn name(&self) -> &str {
-        return &self.name;
+        return self.name.as_str();
     }
 
     async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {

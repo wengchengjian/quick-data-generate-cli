@@ -1,15 +1,14 @@
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicI64, Ordering},
         Arc,
     },
     time::Duration,
 };
 
-use super::{Close, Output, OutputContext};
+use super::{Close, Output};
 use crate::{
     core::{
-        check::DEFAULT_LIMIT_SIZE,
         cli::Cli,
         error::{Error, IoError, Result},
         limit::token::TokenBuketLimiter,
@@ -19,7 +18,7 @@ use crate::{
         column::OutputColumn,
         schema::{ChannelSchema, OutputSchema},
     },
-    task::kafka::KafkaTask,
+    task::{kafka::KafkaTask, Task},
 };
 use async_trait::async_trait;
 use rdkafka::{
@@ -28,7 +27,7 @@ use rdkafka::{
     ClientConfig, Message,
 };
 use tokio::{
-    sync::{broadcast, mpsc, Mutex, Semaphore},
+    sync::{mpsc, Mutex},
     time::timeout,
 };
 
@@ -161,78 +160,64 @@ impl KafkaOutput {
 
 #[async_trait]
 impl Output for KafkaOutput {
-    fn get_columns(&self) -> Option<&Vec<crate::model::column::OutputColumn>> {
+    fn columns(&self) -> Option<&Vec<OutputColumn>> {
         return Some(&self.columns);
+    }
+
+    fn concurrency(&self) -> usize {
+        return self.args.concurrency;
     }
 
     fn name(&self) -> &str {
         return &self.name;
     }
 
-    async fn run(&mut self, context: &mut OutputContext) -> Result<()> {
-        // 获取生产者
+    async fn get_columns_define(&self) -> Option<Vec<OutputColumn>> {
         let topic = self.args.topic.as_str();
         let ref topics = vec![topic];
-        let consumer = self.get_consumer(DEFAULT_GROUP.to_string(), topics)?;
-        // 获取字段定义
-        let columns = KafkaOutput::get_columns_define(consumer).await;
-
-        let schema_columns = &self.columns;
-
-        // 合并两个数组
-        let columns = OutputColumn::merge_columns(schema_columns, &columns);
-
-        if context.skip {
-            return Ok(());
+        match self.get_consumer(DEFAULT_GROUP.to_string(), topics) {
+            Ok(consumer) => {
+                // 获取字段定义
+                let columns = KafkaOutput::get_columns_define(consumer).await;
+                return Some(columns);
+            }
+            Err(_) => {
+                return None;
+            }
         }
-        let (notify_shutdown, _) = broadcast::channel::<()>(1);
-        let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
+    }
 
-        println!("{} will running...", self.name);
-        let limit = context.limit.unwrap_or(DEFAULT_LIMIT_SIZE);
-        let limiter = Arc::new(Mutex::new(TokenBuketLimiter::new(limit, limit * 2)));
-
-        let count_rc = Arc::new(AtomicI64::new(self.args.count as i64));
-        let concurrency = Arc::new(Semaphore::new(self.args.concurrency));
-        while !self.shutdown.load(Ordering::SeqCst) && count_rc.load(Ordering::SeqCst) >= 0 {
-            let permit = concurrency.clone().acquire_owned().await.unwrap();
-
-            // 获取生产者
-            let producer = self.get_provider()?;
-            let columns = columns.clone();
-            let shutdown = Shutdown::new(notify_shutdown.subscribe());
-
-            let count_rc = count_rc.clone();
-            let limiter = limiter.clone();
-            let mut task = KafkaTask::from_args(
-                self.name.clone(),
-                &self.args,
-                producer,
-                columns,
-                shutdown_complete_tx.clone(),
-                shutdown,
-                count_rc,
-                limiter,
-            );
-
-            tokio::spawn(async move {
-                if let Err(err) = task.run().await {
-                    println!("task run error: {}", err);
-                }
-                drop(permit);
-            });
+    fn get_output_task(
+        &self,
+        columns: Vec<OutputColumn>,
+        shutdown_complete_tx: mpsc::Sender<()>,
+        shutdown: Shutdown,
+        count_rc: Arc<AtomicI64>,
+        limiter: Arc<Mutex<TokenBuketLimiter>>,
+    ) -> Option<Box<dyn Task>> {
+        // 获取生产者
+        match self.get_provider() {
+            Ok(producer) => {
+                let task = KafkaTask::from_args(
+                    self.name.clone(),
+                    &self.args,
+                    producer,
+                    columns,
+                    shutdown_complete_tx,
+                    shutdown,
+                    count_rc,
+                    limiter,
+                );
+                return Some(Box::new(task));
+            }
+            Err(_) => {
+                return None;
+            }
         }
+    }
 
-        // When `notify_shutd4own` is dropped, all tasks which have `subscribe`d will
-        // receive the shutdown signal and can exit
-        drop(notify_shutdown);
-        // Drop final `Sender` so the `Receiver` below can complete
-        drop(shutdown_complete_tx);
-        // 等待所有的future执行完毕
-        // futures::future::join_all(futures).await;
-        let _ = shutdown_complete_rx.recv().await;
-
-        Ok(())
+    fn is_shutdown(&self) -> bool {
+        return self.shutdown.load(Ordering::SeqCst);
     }
 }
 

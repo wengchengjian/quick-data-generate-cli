@@ -1,17 +1,19 @@
 use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use std::vec;
-use tokio::sync::{broadcast, mpsc, Semaphore};
+use tokio::sync::{mpsc, Mutex};
 
 use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
+use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::shutdown::Shutdown;
 use crate::model::column::{DataTypeEnum, OutputColumn};
 use crate::model::schema::{ChannelSchema, OutputSchema};
 use crate::task::mysql::MysqlTask;
+use crate::task::Task;
 
 impl MysqlOutput {
     pub fn connect(&self) -> Result<Pool> {
@@ -173,15 +175,19 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for MysqlOutput {
+    fn columns(&self) -> Option<&Vec<OutputColumn>> {
+        return Some(&self.columns);
+    }
+
+    fn concurrency(&self) -> usize {
+        return self.args.concurrency;
+    }
+
     fn name(&self) -> &str {
         return &self.name;
     }
 
-    fn get_columns(&self) -> Option<&Vec<OutputColumn>> {
-        return Some(&self.columns);
-    }
-
-    async fn run(&mut self, _context: &mut OutputContext) -> Result<()> {
+    async fn get_columns_define(&self) -> Option<Vec<OutputColumn>> {
         // 获取连接池
         let pool = self.connect().expect("获取mysql连接失败!");
 
@@ -190,54 +196,34 @@ impl super::Output for MysqlOutput {
         let columns = MysqlOutput::get_columns_define(conn, &self.args.database, &self.args.table)
             .await
             .expect("获取字段定义失败");
-        let schema_columns = &self.columns;
 
-        // 合并两个数组
-        let columns = OutputColumn::merge_columns(schema_columns, &columns);
+        return Some(columns);
+    }
 
-        let (notify_shutdown, _) = broadcast::channel::<()>(1);
-        let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
+    fn get_output_task(
+        &self,
+        columns: Vec<OutputColumn>,
+        shutdown_complete_tx: mpsc::Sender<()>,
+        shutdown: Shutdown,
+        _count_rc: Arc<AtomicI64>,
+        _limiter: Arc<Mutex<TokenBuketLimiter>>,
+    ) -> Option<Box<dyn Task>> {
+        // 获取连接池
+        let pool = self.connect().expect("获取mysql连接失败!");
 
-        println!("{} will running...", self.name);
+        let task = MysqlTask::from_args(
+            self.name.clone(),
+            &self.args,
+            pool,
+            columns,
+            shutdown_complete_tx,
+            shutdown,
+        );
+        return Some(Box::new(task));
+    }
 
-        let concurrency = Arc::new(Semaphore::new(self.args.concurrency));
-        while !self.shutdown.load(Ordering::SeqCst) {
-            let permit = concurrency.clone().acquire_owned().await.unwrap();
-
-            let conn = pool
-                .get_conn()
-                .await
-                .map_err(|err| Error::Other(err.into()))?;
-            let columns = columns.clone();
-
-            let shutdown = Shutdown::new(notify_shutdown.subscribe());
-            let mut task = MysqlTask::from_args(
-                self.name.clone(),
-                &self.args,
-                conn,
-                columns,
-                shutdown_complete_tx.clone(),
-                shutdown,
-            );
-
-            tokio::spawn(async move {
-                if let Err(err) = task.run().await {
-                    println!("task run error: {}", err);
-                }
-                drop(permit);
-            });
-        }
-
-        // When `notify_shutd4own` is dropped, all tasks which have `subscribe`d will
-        // receive the shutdown signal and can exit
-        drop(notify_shutdown);
-        // Drop final `Sender` so the `Receiver` below can complete
-        drop(shutdown_complete_tx);
-        // 等待所有的future执行完毕
-        // futures::future::join_all(futures).await;
-        let _ = shutdown_complete_rx.recv().await;
-
-        Ok(())
+    fn is_shutdown(&self) -> bool {
+        return self.shutdown.load(Ordering::SeqCst);
     }
 }
 
@@ -270,7 +256,7 @@ pub struct MysqlArgs {
     pub concurrency: usize,
 }
 
-use super::{Close, Output, OutputContext};
+use super::{Close, Output};
 
 #[derive(Debug)]
 pub struct MysqlOutput {

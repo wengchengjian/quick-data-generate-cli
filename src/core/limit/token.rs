@@ -1,10 +1,5 @@
 use std::{
-    cmp::{max, min},
-    ops::DerefMut,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, SystemTime},
 };
 

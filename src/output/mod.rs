@@ -13,7 +13,7 @@ use tokio::sync::{broadcast, mpsc, Mutex, Semaphore};
 
 use crate::{
     core::{
-        check::DEFAULT_LIMIT_SIZE, limit::token::TokenBuketLimiter, log::register,
+        limit::token::TokenBuketLimiter, log::register,
         shutdown::Shutdown,
     },
     model::column::OutputColumn,
@@ -55,8 +55,8 @@ pub trait Output: Send + Close + Sync + Debug {
         self.after_run(context).await
     }
 
-    fn count(&self) -> usize {
-        return 0;
+    fn count(&self) -> Option<usize> {
+        return None;
     }
 
     fn concurrency(&self) -> usize {
@@ -69,7 +69,7 @@ pub trait Output: Send + Close + Sync + Debug {
         return None;
     }
 
-    async fn get_columns_define(&self) -> Option<Vec<OutputColumn>> {
+    async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
         return None;
     }
 
@@ -102,12 +102,12 @@ pub trait Output: Send + Close + Sync + Debug {
     }
 
     fn get_output_task(
-        &self,
+        &mut self,
         _columns: Vec<OutputColumn>,
         _shutdown_complete_tx: mpsc::Sender<()>,
         _shutdown: Shutdown,
-        _count_rc: Arc<AtomicI64>,
-        _limiter: Arc<Mutex<TokenBuketLimiter>>,
+        _count_rc: Option<Arc<AtomicI64>>,
+        _limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Option<Box<dyn Task>> {
         return None;
     }
@@ -141,12 +141,23 @@ pub trait Output: Send + Close + Sync + Debug {
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
 
         println!("{} will running...", self.name());
-        let limit = context.limit.unwrap_or(DEFAULT_LIMIT_SIZE);
-        let limiter = Arc::new(Mutex::new(TokenBuketLimiter::new(limit, limit * 2)));
+        let limiter = context
+            .limit
+            .map(|limit| Arc::new(Mutex::new(TokenBuketLimiter::new(limit, limit * 2))));
 
-        let count_rc = Arc::new(AtomicI64::new(self.count() as i64));
+        let count_rc = self
+            .count()
+            .map(|count| Arc::new(AtomicI64::new(count as i64)));
+
         let concurrency = Arc::new(Semaphore::new(self.concurrency()));
-        while !self.is_shutdown() && count_rc.load(Ordering::SeqCst) >= 0 {
+        while !self.is_shutdown() {
+            // 检查数量
+            if let Some(count) = count_rc.as_ref() {
+                if count.load(Ordering::SeqCst) <= 0 {
+                    break;
+                }
+            }
+
             let permit = concurrency.clone().acquire_owned().await.unwrap();
 
             let columns = columns.clone();

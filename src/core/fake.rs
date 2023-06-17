@@ -14,6 +14,9 @@ use fake::{Fake, Faker};
 use mysql_async::Params;
 use serde_json::json;
 
+static DATE_TIME_FORMAT: &[FormatItem<'_>] =
+    format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");
+
 pub fn get_random_u8() -> u8 {
     Faker.fake::<u8>()
 }
@@ -165,11 +168,17 @@ pub fn get_random_timestamp() -> time::OffsetDateTime {
 }
 
 pub fn get_random_datetime_zh() -> time::OffsetDateTime {
-    DateTime(ZH_CN).fake()
+    get_random_date_between_zh(
+        time::OffsetDateTime::UNIX_EPOCH,
+        datetime!(2038-01-19 03:14:07 UTC),
+    )
 }
 
 pub fn get_random_datetime_en() -> time::OffsetDateTime {
-    DateTime(EN).fake()
+    get_random_date_between_zh(
+        time::OffsetDateTime::UNIX_EPOCH,
+        datetime!(2038-01-19 03:14:07 UTC),
+    )
 }
 
 pub fn get_random_uuid() -> String {
@@ -177,7 +186,8 @@ pub fn get_random_uuid() -> String {
 }
 
 use fake::faker::lorem::raw::*;
-use time::macros::datetime;
+use time::format_description::FormatItem;
+use time::macros::{datetime, format_description};
 
 use crate::model::column::{DataTypeEnum, OutputColumn};
 
@@ -492,19 +502,27 @@ pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Json {
                 data[name] = json!(get_random_string());
             }
             DataTypeEnum::Date => {
-                data[name] = json!(get_random_date_zh().to_string());
+                data[name] = json!(get_random_date_zh()
+                    .format(&DATE_TIME_FORMAT)
+                    .expect("时间格式错误"));
             }
             DataTypeEnum::Time => {
                 data[name] = json!(get_random_time_zh().to_string());
             }
             DataTypeEnum::Timestamp => {
-                data[name] = json!(get_random_datetime_zh().to_string());
+                data[name] = json!(get_random_datetime_zh()
+                    .format(&DATE_TIME_FORMAT)
+                    .expect("时间格式错误"));
             }
             DataTypeEnum::DateTime => {
-                data[name] = json!(get_random_datetime_zh().to_string());
+                data[name] = json!(get_random_datetime_zh()
+                    .format(&DATE_TIME_FORMAT)
+                    .expect("时间格式错误"));
             }
             DataTypeEnum::DateTime64 => {
-                data[name] = json!(get_random_datetime_zh().to_string());
+                data[name] = json!(get_random_datetime_zh()
+                    .format(&DATE_TIME_FORMAT)
+                    .expect("时间格式错误"));
             }
             DataTypeEnum::Nullable => {
                 data[name] = json!(null);

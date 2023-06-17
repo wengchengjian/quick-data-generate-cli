@@ -1,4 +1,5 @@
 use std::{
+    cmp::min,
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, SystemTime},
 };
@@ -56,6 +57,22 @@ impl TokenBuketLimiter {
             if self.token.load(Ordering::SeqCst) > 0 {
                 self.token.fetch_sub(1, Ordering::SeqCst);
                 break;
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    pub async fn acquire_num(&mut self, n: usize) {
+        let mut num = n;
+        while num != 0 {
+            self.refresh_token();
+            let token_num = self.token.load(Ordering::SeqCst);
+            if token_num > 0 {
+                let sub = min(token_num, num);
+                num = num - sub;
+                self.token.fetch_sub(sub, Ordering::SeqCst);
+                continue;
             }
 
             tokio::time::sleep(Duration::from_millis(100)).await;

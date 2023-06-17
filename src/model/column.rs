@@ -225,8 +225,8 @@ mod tests {
         let schema = parse_schema(&path_buf).expect("解析schema文件失败");
 
         let outputs1 = parse_outputs_from_schema(schema).expect("解析output失败");
-        let c1 = outputs1[0].get_columns().unwrap();
-        let c2 = outputs1[1].get_columns().unwrap();
+        let c1 = outputs1[0].columns().unwrap();
+        let c2 = outputs1[1].columns().unwrap();
 
         let mut _c3 = vec![];
         if outputs1[0].name().eq("mysql-output") {

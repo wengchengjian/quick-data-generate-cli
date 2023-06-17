@@ -71,15 +71,16 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, Ou
     let interval = cli.interval;
     let mut concurrency = cli.concurrency;
 
-    let _ = cli.output.insert(output::OutputEnum::Kafka);
-    let _ = cli.topic.insert("FileHttpLogPushService".to_string());
-    cli.host = "192.168.180.217".to_owned();
-    //    let _ = cli.user.insert("root".to_string());
-    //    let _ = cli.password.insert("wcj520600".to_string());
-    let _ = cli.batch.insert(2000);
-    // let _ = cli.count.insert(1000000);
+    let _ = cli.output.insert(output::OutputEnum::Mysql);
+    // let _ = cli.topic.insert("FileHttpLogPushService".to_string());
+    cli.host = "localhost".to_owned();
+    let _ = cli.user.insert("root".to_string());
+    let _ = cli.database.insert("tests".to_string());
+    let _ = cli.table.insert("UPGRADE_PACKET_INFO".to_string());
+    let _ = cli.password.insert("wcj520600".to_string());
+    let _ = cli.batch.insert(1000);
+    // let _ = cli.count.insert(50000);
     let _ = cli.concurrency.insert(1);
-    let _ = cli.limit.insert(2000);
     // let _ = cli.interval.insert(1);
 
     if let Some(schema_path) = &cli.schema {

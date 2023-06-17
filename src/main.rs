@@ -1,3 +1,5 @@
+
+
 use crate::core::error::{Error, IoError};
 
 use crate::core::cli::Cli;
@@ -11,6 +13,7 @@ use tokio::signal;
 // use tracing_subscriber::FmtSubscriber;
 
 pub mod core;
+pub mod exec;
 pub mod macros;
 pub mod model;
 pub mod output;
@@ -19,7 +22,7 @@ pub mod util;
 #[macro_use]
 extern crate lazy_static;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     let mut cli = core::cli::Cli::from_args();
 
@@ -50,7 +53,9 @@ pub async fn create_delegate_output(cli: Cli) -> Result<(DelegatedOutput, Output
         return Err(Error::Io(IoError::ArgNotFound("output".to_owned())));
     }
 
-    STATICS_LOGGER.lock().await.interval(interval);
+    unsafe {
+        STATICS_LOGGER.as_mut().unwrap().interval(interval);
+    }
 
     let output = DelegatedOutput::new(outputs);
 
@@ -58,6 +63,10 @@ pub async fn create_delegate_output(cli: Cli) -> Result<(DelegatedOutput, Output
 }
 
 pub async fn execute(cli: Cli) -> Result<()> {
+    unsafe {
+        STATICS_LOGGER = Some(StaticsLogger::new(0));
+    }
+
     let (mut output, mut context) = create_delegate_output(cli).await?;
     tokio::select! {
         res = output.execute(&mut context) => {

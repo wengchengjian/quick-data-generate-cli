@@ -24,8 +24,20 @@ pub enum IoError {
     #[error("parse schema error")]
     ParseSchemaError,
 
+    #[error("parse json error: {}", _0)]
+    ParseJsonError(#[source] serde_json::Error),
+
+    #[error("cannot access data: {}", _0)]
+    DataAccessError(String),
+
     #[error("unkown data type:`{0}`")]
     UnkownTypeError(String),
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::Io(IoError::ParseJsonError(e))
+    }
 }
 
 impl From<IoError> for Error {

@@ -172,7 +172,7 @@ impl Output for KafkaOutput {
         return &self.name;
     }
 
-    async fn get_columns_define(&self) -> Option<Vec<OutputColumn>> {
+    async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
         let topic = self.args.topic.as_str();
         let ref topics = vec![topic];
         match self.get_consumer(DEFAULT_GROUP.to_string(), topics) {
@@ -188,12 +188,12 @@ impl Output for KafkaOutput {
     }
 
     fn get_output_task(
-        &self,
+        &mut self,
         columns: Vec<OutputColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
-        count_rc: Arc<AtomicI64>,
-        limiter: Arc<Mutex<TokenBuketLimiter>>,
+        count_rc: Option<Arc<AtomicI64>>,
+        limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Option<Box<dyn Task>> {
         // 获取生产者
         match self.get_provider() {

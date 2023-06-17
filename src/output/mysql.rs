@@ -1,5 +1,6 @@
 use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
@@ -16,17 +17,20 @@ use crate::task::mysql::MysqlTask;
 use crate::task::Task;
 
 impl MysqlOutput {
-    pub fn connect(&self) -> Result<Pool> {
+    pub fn connect(&mut self) -> Result<Pool> {
         //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
-            "mysql://{}:{}@{}:{}/{}?stmt_cache_size=128&compression=fast",
+            "mysql://{}:{}@{}:{}/{}?&compression=fast&stmt_cache_size=256",
             self.args.user, self.args.password, self.args.host, self.args.port, self.args.database
         );
 
-        let opt = Opts::from_url(&url).map_err(|err| Error::Other(err.into()))?;
-        let pool = Pool::new(opt);
+        let pool = self.pool_cache.entry(url.clone()).or_insert_with(|| {
+            let opt = Opts::from_url(&url).expect("mysql连接地址错误");
 
-        Ok(pool)
+            Pool::new(opt)
+        });
+
+        Ok(pool.clone())
     }
 
     /// 根据数据库和表获取字段定义
@@ -79,6 +83,7 @@ impl MysqlOutput {
             args: cli.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
+            pool_cache: HashMap::new(),
         };
 
         Ok(Box::new(res))
@@ -151,7 +156,7 @@ impl TryInto<MysqlArgs> for Cli {
                 .table
                 .ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?
                 .to_string(),
-            batch: self.batch.unwrap_or(5000),
+            batch: self.batch.unwrap_or(1000),
             count: self.count.unwrap_or(0),
             concurrency: self.concurrency.unwrap_or(1),
         })
@@ -167,6 +172,7 @@ impl TryFrom<OutputSchema> for MysqlOutput {
             args: MysqlArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
             columns: OutputColumn::get_columns_from_schema(&value.columns),
+            pool_cache: HashMap::new(),
         })
     }
 }
@@ -187,7 +193,14 @@ impl super::Output for MysqlOutput {
         return &self.name;
     }
 
-    async fn get_columns_define(&self) -> Option<Vec<OutputColumn>> {
+    fn count(&self) -> Option<usize> {
+        match self.args.count {
+            0 => None,
+            x => Some(x),
+        }
+    }
+
+    async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
         // 获取连接池
         let pool = self.connect().expect("获取mysql连接失败!");
 
@@ -201,12 +214,12 @@ impl super::Output for MysqlOutput {
     }
 
     fn get_output_task(
-        &self,
+        &mut self,
         columns: Vec<OutputColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
-        _count_rc: Arc<AtomicI64>,
-        _limiter: Arc<Mutex<TokenBuketLimiter>>,
+        count_rc: Option<Arc<AtomicI64>>,
+        limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Option<Box<dyn Task>> {
         // 获取连接池
         let pool = self.connect().expect("获取mysql连接失败!");
@@ -218,6 +231,8 @@ impl super::Output for MysqlOutput {
             columns,
             shutdown_complete_tx,
             shutdown,
+            limiter,
+            count_rc,
         );
         return Some(Box::new(task));
     }
@@ -267,6 +282,8 @@ pub struct MysqlOutput {
     pub columns: Vec<OutputColumn>,
 
     pub shutdown: AtomicBool,
+
+    pub pool_cache: HashMap<String, Pool>,
 }
 
 impl TryFrom<Cli> for Box<MysqlOutput> {
@@ -278,6 +295,7 @@ impl TryFrom<Cli> for Box<MysqlOutput> {
             args: value.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
+            pool_cache: HashMap::new(),
         };
 
         Ok(Box::new(res))

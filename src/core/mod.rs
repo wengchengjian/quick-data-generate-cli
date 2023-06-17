@@ -6,3 +6,4 @@ pub mod limit;
 pub mod log;
 pub mod parse;
 pub mod shutdown;
+pub mod watch;

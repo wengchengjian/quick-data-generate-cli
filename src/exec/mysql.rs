@@ -1,6 +1,4 @@
-use std::{
-    sync::{atomic::AtomicI64, Arc},
-};
+use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
 use mysql_async::{prelude::Query, Pool};
@@ -107,8 +105,8 @@ impl Exector for MysqlTaskExecutor {
             "INSERT DELAYED  INTO {}.{} ({}) VALUES ",
             self.database, self.table, column_names
         );
-        let mut watch = StopWatch::new();
-        watch.start("组装sql");
+        //        let mut watch = StopWatch::new();
+        //        watch.start("组装sql");
 
         for val in vals {
             let mut name_vals = format!("({})", column_name_vals);
@@ -120,16 +118,16 @@ impl Exector for MysqlTaskExecutor {
             insert_header.push_str(&name_vals);
             insert_header.push(',');
         }
-        watch.stop();
+        //        watch.stop();
         insert_header.pop();
         match self.pool.get_conn().await {
             Ok(mut conn) => {
-                watch.start("执行sql");
+                //                watch.start("执行sql");
                 if let Err(err) = insert_header.run(&mut conn).await {
                     println!("insert error: {:?}", err);
                 }
-                watch.stop();
-                watch.print_all_task_mils();
+                //                watch.stop();
+                //                watch.print_all_task_mils();
                 return Ok(());
             }
             Err(e) => {

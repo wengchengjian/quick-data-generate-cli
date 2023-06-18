@@ -12,6 +12,7 @@ use fake::locales::*;
 use fake::uuid::UUIDv4;
 use fake::{Fake, Faker};
 use mysql_async::Params;
+use rand::{thread_rng, Rng};
 use serde_json::json;
 
 static DATE_TIME_FORMAT: &[FormatItem<'_>] =
@@ -85,6 +86,10 @@ pub fn get_random_free_email() -> String {
     FreeEmail(ZH_CN).fake()
 }
 
+pub fn get_random_free_email_between(_: &str, _: &str) -> String {
+    FreeEmail(ZH_CN).fake()
+}
+
 pub fn get_random_safe_email() -> String {
     SafeEmail(ZH_CN).fake()
 }
@@ -92,8 +97,15 @@ pub fn get_random_safe_email() -> String {
 pub fn get_random_username() -> String {
     Username(EN).fake()
 }
+pub fn get_random_username_between(_val: &str, _val2: &str) -> String {
+    Username(EN).fake()
+}
 
 pub fn get_random_password() -> String {
+    Password(EN, 8..16).fake()
+}
+
+pub fn get_random_password_between(_val: &str, _val2: &str) -> String {
     Password(EN, 8..16).fake()
 }
 
@@ -105,7 +117,14 @@ pub fn get_random_ipv4_zh() -> String {
     IPv4(ZH_CN).fake()
 }
 
+pub fn get_random_ipv4_between(_val: &str, _val2: &str) -> String {
+    IPv4(ZH_CN).fake()
+}
+
 pub fn get_random_ipv6_zh() -> String {
+    IPv6(ZH_CN).fake()
+}
+pub fn get_random_ipv6_between(_val: &str, _val2: &str) -> String {
     IPv6(ZH_CN).fake()
 }
 
@@ -120,8 +139,15 @@ pub fn get_random_city_en() -> String {
 pub fn get_random_city_zh() -> String {
     CityName(ZH_CN).fake()
 }
+pub fn get_random_city_between(_: &str, _: &str) -> String {
+    CityName(ZH_CN).fake()
+}
 
 pub fn get_random_country_zh() -> String {
+    CountryName(ZH_CN).fake()
+}
+
+pub fn get_random_country_between(_: &str, _: &str) -> String {
     CountryName(ZH_CN).fake()
 }
 
@@ -134,6 +160,9 @@ pub fn get_random_phone_en() -> String {
 }
 
 pub fn get_random_phone_zh() -> String {
+    PhoneNumber(ZH_CN).fake()
+}
+pub fn get_random_phone_between(_: &str, _: &str) -> String {
     PhoneNumber(ZH_CN).fake()
 }
 
@@ -153,6 +182,14 @@ pub fn get_random_time_en() -> time::Time {
     Time(EN).fake()
 }
 
+pub fn get_random_date_between_str(start: &str, end: &str) -> time::OffsetDateTime {
+    let start = time::OffsetDateTime::parse(start, &DATE_TIME_FORMAT)
+        .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
+    let end = time::OffsetDateTime::parse(end, &DATE_TIME_FORMAT)
+        .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
+    DateTimeBetween(start, end).fake()
+}
+
 pub fn get_random_date_between_zh(
     start: time::OffsetDateTime,
     end: time::OffsetDateTime,
@@ -165,6 +202,20 @@ pub fn get_random_timestamp() -> time::OffsetDateTime {
         time::OffsetDateTime::UNIX_EPOCH,
         datetime!(2038-01-19 03:14:07 UTC),
     )
+}
+
+pub fn get_random_timestamp_zh_between(
+    start: time::OffsetDateTime,
+    end: time::OffsetDateTime,
+) -> time::OffsetDateTime {
+    get_random_date_between_zh(start, end)
+}
+
+pub fn get_random_datetime_zh_between(
+    start: time::OffsetDateTime,
+    end: time::OffsetDateTime,
+) -> time::OffsetDateTime {
+    get_random_date_between_zh(start, end)
 }
 
 pub fn get_random_datetime_zh() -> time::OffsetDateTime {
@@ -185,17 +236,26 @@ pub fn get_random_uuid() -> String {
     UUIDv4.fake()
 }
 
+pub fn get_random_uuid_between(_: &str, _: &str) -> String {
+    UUIDv4.fake()
+}
+
 use fake::faker::lorem::raw::*;
 use time::format_description::FormatItem;
 use time::macros::{datetime, format_description};
 
-use crate::model::column::{DataTypeEnum, OutputColumn};
+use crate::model::column::{DataTypeEnum, FixedValue, OutputColumn};
+use crate::{impl_block_parse_type_val_for_number, impl_block_parse_type_val_for_str};
 
 pub fn get_random_word_en() -> String {
     Word(EN).fake()
 }
 
 pub fn get_random_word_zh() -> String {
+    Word(ZH_CN).fake()
+}
+
+pub fn get_random_word_zh_between(_: &str, _: &str) -> String {
     Word(ZH_CN).fake()
 }
 
@@ -209,6 +269,9 @@ pub fn get_random_words_zh(count: Range<usize>) -> Vec<String> {
 
 pub fn get_random_sentence_zh(count: Range<usize>) -> String {
     Sentence(ZH_CN, count).fake()
+}
+pub fn get_random_sentence_between(_: &str, _: &str) -> String {
+    Sentence(ZH_CN, 1..3).fake()
 }
 
 pub fn get_random_sentence_en(count: Range<usize>) -> String {
@@ -225,6 +288,9 @@ pub fn get_random_sentences_zh(count: Range<usize>) -> Vec<String> {
 
 pub fn get_random_paragraph_zh(count: Range<usize>) -> String {
     Paragraph(ZH_CN, count).fake()
+}
+pub fn get_random_paragraph_between(_: &str, _: &str) -> String {
+    Paragraph(ZH_CN, 1..3).fake()
 }
 
 pub fn get_random_paragraph_en(count: Range<usize>) -> String {
@@ -245,330 +311,252 @@ pub fn get_random_bool() -> bool {
 
 pub type Json = serde_json::Value;
 
-pub fn get_fake_data_mysql(columns: &Vec<OutputColumn>) -> Params {
-    let mut value: HashMap<Vec<u8>, mysql_common::Value> = HashMap::new();
-    for colum in columns {
-        let name = colum.name().as_bytes().to_vec();
-        let data_type = colum.data_type();
-        match data_type {
-            DataTypeEnum::UInt8 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::UInt(get_random_u8() as u64));
-            }
-            DataTypeEnum::UInt16 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::UInt(get_random_u16() as u64));
-            }
-            DataTypeEnum::UInt32 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::UInt(get_random_u32() as u64));
-            }
-            DataTypeEnum::UInt64 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::UInt(get_random_u64()));
-            }
-            DataTypeEnum::Int8 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Int(get_random_i8() as i64));
-            }
-            DataTypeEnum::Int16 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Int(get_random_i16() as i64));
-            }
-            DataTypeEnum::Int32 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Int(get_random_i32() as i64));
-            }
-            DataTypeEnum::Int64 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Int(get_random_i64()));
-            }
-            DataTypeEnum::Float32 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Float(get_random_f32()));
-            }
-            DataTypeEnum::Float64 => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Double(get_random_f64()));
-            }
-            DataTypeEnum::String => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Bytes(get_random_string().into_bytes()));
-            }
-            DataTypeEnum::FixedString => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Bytes(get_random_string().into_bytes()));
-            }
-            DataTypeEnum::Date => {
-                let date = get_random_datetime_zh();
-                value.entry(name).or_insert(mysql_common::Value::Date(
-                    date.year() as u16,
-                    date.month().into(),
-                    date.day(),
-                    date.hour(),
-                    date.minute(),
-                    date.second(),
-                    date.microsecond(),
-                ));
-            }
-            DataTypeEnum::Time => {
-                let time = get_random_time_zh();
-                value.entry(name).or_insert(mysql_common::Value::Time(
-                    true,
-                    0,
-                    time.hour(),
-                    time.minute(),
-                    time.second(),
-                    time.microsecond(),
-                ));
-            }
-            DataTypeEnum::Timestamp => {
-                let date = get_random_timestamp();
-                value.entry(name).or_insert(mysql_common::Value::Date(
-                    date.year() as u16,
-                    date.month().into(),
-                    date.day(),
-                    date.hour(),
-                    date.minute(),
-                    date.second(),
-                    date.microsecond(),
-                ));
-            }
-            DataTypeEnum::DateTime => {
-                let date = get_random_timestamp();
-                value.entry(name).or_insert(mysql_common::Value::Date(
-                    date.year() as u16,
-                    date.month().into(),
-                    date.day(),
-                    date.hour(),
-                    date.minute(),
-                    date.second(),
-                    date.microsecond(),
-                ));
-            }
-            DataTypeEnum::DateTime64 => {
-                let date = get_random_datetime_zh();
-                value.entry(name).or_insert(mysql_common::Value::Date(
-                    date.year() as u16,
-                    date.month().into(),
-                    date.day(),
-                    date.hour(),
-                    date.minute(),
-                    date.second(),
-                    date.microsecond(),
-                ));
-            }
-            DataTypeEnum::Nullable => {
-                value.entry(name).or_insert(mysql_common::Value::NULL);
-            }
-            DataTypeEnum::UUID => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::Bytes(get_random_uuid().into_bytes()));
-            }
-            DataTypeEnum::IPv4 => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_ipv4_zh().into_bytes(),
-                ));
-            }
-            DataTypeEnum::IPv6 => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_ipv4_zh().into_bytes(),
-                ));
-            }
-            DataTypeEnum::Email => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_free_email().into_bytes(),
-                ));
-            }
-            DataTypeEnum::Password => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_password().into_bytes(),
-                ));
-            }
-            DataTypeEnum::Username => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_username().into_bytes(),
-                ));
-            }
-            DataTypeEnum::Word => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_word_zh().into_bytes(),
-                ));
-            }
-            DataTypeEnum::Sentence => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_sentence_zh(1..3).into_bytes(),
-                ));
-            }
-            DataTypeEnum::Paragraph => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_paragraph_zh(1..3).into_bytes(),
-                ));
-            }
-            DataTypeEnum::City => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_city_zh().into_bytes(),
-                ));
-            }
-            DataTypeEnum::Country => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_country_zh().into_bytes(),
-                ));
-            }
-            DataTypeEnum::Phone => {
-                value.entry(name).or_insert(mysql_common::Value::Bytes(
-                    get_random_phone_zh().into_bytes(),
-                ));
-            }
-            DataTypeEnum::Unknown => {
-                value.entry(name).or_insert(mysql_common::Value::NULL);
-            }
-            DataTypeEnum::Boolean => {
-                value
-                    .entry(name)
-                    .or_insert(mysql_common::Value::UInt((0..1).fake::<u64>()));
-            }
-        }
-    }
-
-    // let values = value.values().cloned().collect::<Vec<mysql_common::Value>>();
-    // let sep = std::iter::repeat(", ");
-    // let ps = values
-    //     .iter()
-    //     .map(|p| p.as_sql(true))
-    //     .zip(sep)
-    //     .map(|(val, sep)| val + sep)
-    //     .collect::<String>();
-
-    // println!("{:?}", ps);
-
-    return Params::Named(value);
+pub fn get_random_string_two(_: &str, _: &str) -> String {
+    return get_random_string();
 }
 
 /// 通用生成测试数据方法
 pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Json {
     let mut data = json!({});
+    let mut rng = thread_rng();
     for colum in columns {
         let name = colum.name();
         let data_type = colum.data_type();
         match data_type {
-            DataTypeEnum::UInt8 => {
-                data[name] = json!(get_random_u8());
+            DataTypeEnum::UInt8(val) => {
+                impl_block_parse_type_val_for_number!(u8, rng, get_random_u8, val, data, name)
             }
-            DataTypeEnum::UInt16 => {
-                data[name] = json!(get_random_u16());
+            DataTypeEnum::UInt16(val) => {
+                impl_block_parse_type_val_for_number!(u16, rng, get_random_u16, val, data, name)
             }
-            DataTypeEnum::UInt32 => {
-                data[name] = json!(get_random_u32());
+            DataTypeEnum::UInt32(val) => {
+                impl_block_parse_type_val_for_number!(u32, rng, get_random_u32, val, data, name)
             }
-            DataTypeEnum::UInt64 => {
-                data[name] = json!(get_random_u64());
+            DataTypeEnum::UInt64(val) => {
+                impl_block_parse_type_val_for_number!(u64, rng, get_random_u64, val, data, name)
             }
-            DataTypeEnum::Int8 => {
-                data[name] = json!(get_random_i8());
+            DataTypeEnum::Int8(val) => {
+                impl_block_parse_type_val_for_number!(i8, rng, get_random_i8, val, data, name)
             }
-            DataTypeEnum::Int16 => {
-                data[name] = json!(get_random_i16());
+            DataTypeEnum::Int16(val) => {
+                impl_block_parse_type_val_for_number!(i16, rng, get_random_i16, val, data, name)
             }
-            DataTypeEnum::Int32 => {
-                data[name] = json!(get_random_i32());
+            DataTypeEnum::Int32(val) => {
+                impl_block_parse_type_val_for_number!(i32, rng, get_random_i32, val, data, name)
             }
-            DataTypeEnum::Int64 => {
-                data[name] = json!(get_random_i64());
+            DataTypeEnum::Int64(val) => {
+                impl_block_parse_type_val_for_number!(i64, rng, get_random_i64, val, data, name)
             }
-            DataTypeEnum::Float32 => {
-                data[name] = json!(get_random_f32());
+            DataTypeEnum::Float32(val) => {
+                impl_block_parse_type_val_for_number!(f32, rng, get_random_f32, val, data, name)
             }
-            DataTypeEnum::Float64 => {
-                data[name] = json!(get_random_f64());
+            DataTypeEnum::Float64(val) => {
+                impl_block_parse_type_val_for_number!(f64, rng, get_random_f64, val, data, name);
             }
-            DataTypeEnum::String => {
-                data[name] = json!(get_random_string());
+            DataTypeEnum::String(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_string,
+                    val,
+                    data,
+                    name,
+                    get_random_string_two
+                )
             }
-            DataTypeEnum::FixedString => {
-                data[name] = json!(get_random_string());
+            DataTypeEnum::FixedString(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_string,
+                    val,
+                    data,
+                    name,
+                    get_random_string_two
+                )
             }
-            DataTypeEnum::Date => {
-                data[name] = json!(get_random_date_zh()
-                    .format(&DATE_TIME_FORMAT)
-                    .expect("时间格式错误"));
+            DataTypeEnum::Date(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_date_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_string_two
+                )
             }
-            DataTypeEnum::Time => {
-                data[name] = json!(get_random_time_zh().to_string());
+            DataTypeEnum::Time(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_time_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_string_two
+                )
             }
-            DataTypeEnum::Timestamp => {
-                data[name] = json!(get_random_datetime_zh()
-                    .format(&DATE_TIME_FORMAT)
-                    .expect("时间格式错误"));
+            DataTypeEnum::Timestamp(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_datetime_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_date_between_str
+                )
             }
-            DataTypeEnum::DateTime => {
-                data[name] = json!(get_random_datetime_zh()
-                    .format(&DATE_TIME_FORMAT)
-                    .expect("时间格式错误"));
+            DataTypeEnum::DateTime(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_datetime_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_date_between_str
+                )
             }
-            DataTypeEnum::DateTime64 => {
-                data[name] = json!(get_random_datetime_zh()
-                    .format(&DATE_TIME_FORMAT)
-                    .expect("时间格式错误"));
+            DataTypeEnum::DateTime64(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_datetime_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_date_between_str
+                )
             }
-            DataTypeEnum::Nullable => {
+            DataTypeEnum::Nullable(_) => {
                 data[name] = json!(null);
             }
-            DataTypeEnum::UUID => {
-                data[name] = json!(get_random_uuid());
+            DataTypeEnum::UUID(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_uuid,
+                    val,
+                    data,
+                    name,
+                    get_random_uuid_between
+                )
             }
-            DataTypeEnum::IPv4 => {
-                data[name] = json!(get_random_ipv4_zh());
+            DataTypeEnum::IPv4(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_ipv4_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_ipv4_between
+                );
             }
-            DataTypeEnum::IPv6 => {
-                data[name] = json!(get_random_ipv4_zh());
+            DataTypeEnum::IPv6(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_ipv6_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_ipv6_between
+                );
             }
-            DataTypeEnum::Email => {
-                data[name] = json!(get_random_free_email());
+            DataTypeEnum::Email(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_free_email,
+                    val,
+                    data,
+                    name,
+                    get_random_free_email_between
+                );
             }
-            DataTypeEnum::Password => {
-                data[name] = json!(get_random_password());
+            DataTypeEnum::Password(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_password,
+                    val,
+                    data,
+                    name,
+                    get_random_password_between
+                );
             }
-            DataTypeEnum::Username => {
-                data[name] = json!(get_random_username());
+            DataTypeEnum::Username(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_username,
+                    val,
+                    data,
+                    name,
+                    get_random_username_between
+                );
             }
-            DataTypeEnum::Word => {
-                data[name] = json!(get_random_word_zh());
+            DataTypeEnum::Word(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_word_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_word_zh_between
+                );
             }
-            DataTypeEnum::Sentence => {
-                data[name] = json!(get_random_sentence_zh(1..3));
+            DataTypeEnum::Sentence(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_sentence_zh(1..3),
+                    val,
+                    data,
+                    name,
+                    get_random_sentence_between
+                );
             }
-            DataTypeEnum::Paragraph => {
-                data[name] = json!(get_random_paragraph_zh(1..3));
+            DataTypeEnum::Paragraph(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_paragraph_zh(1..3),
+                    val,
+                    data,
+                    name,
+                    get_random_paragraph_between
+                );
             }
-            DataTypeEnum::City => {
-                data[name] = json!(get_random_city_zh());
+            DataTypeEnum::City(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_city_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_city_between
+                );
             }
-            DataTypeEnum::Country => {
-                data[name] = json!(get_random_country_zh());
+            DataTypeEnum::Country(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_country_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_country_between
+                );
             }
-            DataTypeEnum::Phone => {
-                data[name] = json!(get_random_phone_zh());
+            DataTypeEnum::Phone(val) => {
+                impl_block_parse_type_val_for_str!(
+                    rng,
+                    get_random_phone_zh,
+                    val,
+                    data,
+                    name,
+                    get_random_phone_between
+                );
             }
             DataTypeEnum::Unknown => {
                 data[name] = json!(null);
             }
-            DataTypeEnum::Boolean => {
-                data[name] = json!(get_random_bool());
-            }
+            DataTypeEnum::Boolean(val) => match val {
+                FixedValue::Single(val) => {
+                    data[name] = json!(val.parse::<bool>().unwrap_or(get_random_bool()))
+                }
+                FixedValue::Array(_) => data[name] = json!(get_random_bool()),
+                FixedValue::Range(_, _) => data[name] = json!(get_random_bool()),
+                FixedValue::None => data[name] = json!(get_random_bool()),
+            },
         }
     }
     return data;

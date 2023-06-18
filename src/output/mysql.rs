@@ -1,5 +1,6 @@
 use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicI64};
@@ -181,6 +182,30 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for MysqlOutput {
+
+    fn output_type(&self) -> Option<OutputEnum> {
+        return Some(OutputEnum::Mysql);
+    }
+
+    fn batch(&self) -> Option<usize> {
+        return Some(self.args.batch);
+    }
+
+    fn meta(&self) -> Option<serde_json::Value> {
+        return Some(json!({
+            "host": self.args.host,
+            "port": self.args.port,
+            "user": self.args.user,
+            "password": self.args.password,
+            "database": self.args.database,
+            "table": self.args.table
+        }));
+    }
+
+    fn channel_schema(&self) -> Option<ChannelSchema> {
+        return Some(ChannelSchema { batch: self.args.batch, concurrency: self.args.concurrency, count: self.args.count });
+    }
+
     fn columns(&self) -> Option<&Vec<OutputColumn>> {
         return Some(&self.columns);
     }
@@ -271,7 +296,7 @@ pub struct MysqlArgs {
     pub concurrency: usize,
 }
 
-use super::{Close, Output};
+use super::{Close, Output, OutputEnum};
 
 #[derive(Debug)]
 pub struct MysqlOutput {

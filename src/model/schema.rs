@@ -13,6 +13,20 @@ pub struct Schema {
     pub outputs: HashMap<String, OutputSchema>,
 }
 
+impl Schema {
+    pub fn new(
+        interval: Option<usize>,
+        concurrency: Option<usize>,
+        outputs: HashMap<String, OutputSchema>,
+    ) -> Self {
+        Self {
+            interval,
+            concurrency,
+            outputs,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputSchema {
     pub output: OutputEnum,

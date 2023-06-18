@@ -1,21 +1,11 @@
-use std::{
-    sync::{
-        atomic::{AtomicI64},
-        Arc,
-    },
-};
+use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
-use rdkafka::{
-    producer::{FutureProducer},
-};
+use rdkafka::producer::FutureProducer;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{
-    core::{
-        limit::token::TokenBuketLimiter,
-        shutdown::Shutdown,
-    },
+    core::{limit::token::TokenBuketLimiter, shutdown::Shutdown},
     exec::{kafka::KafkaTaskExecutor, Exector},
     model::column::OutputColumn,
     output::{kafka::KafkaArgs, Close},

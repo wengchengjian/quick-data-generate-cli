@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::{
     path::PathBuf,
     str::FromStr,
@@ -12,11 +13,11 @@ use std::{
 use tokio::sync::{broadcast, mpsc, Mutex, Semaphore};
 
 use crate::{
-    core::{
-        limit::token::TokenBuketLimiter, log::register,
-        shutdown::Shutdown,
+    core::{limit::token::TokenBuketLimiter, log::register, shutdown::Shutdown, fake::get_random_uuid},
+    model::{
+        column::OutputColumn,
+        schema::{ChannelSchema, OutputSchema, Schema},
     },
-    model::column::OutputColumn,
     task::Task,
 };
 
@@ -55,6 +56,43 @@ pub trait Output: Send + Close + Sync + Debug {
         self.after_run(context).await
     }
 
+    fn output_type(&self) -> Option<OutputEnum> {
+        return None;
+    }
+
+    fn batch(&self) -> Option<usize> {
+        return None;
+    }
+
+    fn meta(&self) -> Option<serde_json::Value> {
+        return None;
+    }
+
+    fn channel_schema(&self) -> Option<ChannelSchema> {
+        return None;
+    }
+
+    fn transfer_to_schema(&self) -> Option<OutputSchema> {
+        match self.channel_schema() {
+            Some(channel_schema) => Some(OutputSchema {
+                output: match self.output_type() {
+                    Some(output_type) => output_type,
+                    None => return None,
+                },
+                meta: match self.meta() {
+                    Some(meta) => meta,
+                    None => return None,
+                },
+                columns: match self.columns() {
+                    Some(columns) => serde_json::to_value(columns).unwrap(),
+                    None => return None,
+                },
+                channel: channel_schema,
+            }),
+            None => None,
+        }
+    }
+
     fn count(&self) -> Option<usize> {
         return None;
     }
@@ -71,34 +109,6 @@ pub trait Output: Send + Close + Sync + Debug {
 
     async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
         return None;
-    }
-
-    async fn output_schema_to_dir(&self, column: &Vec<OutputColumn>) {
-        if column.len() == 0 {
-            return;
-        }
-
-        let filename = format!("{}.{}", self.name(), "json");
-
-        let mut path = home::home_dir().unwrap_or(PathBuf::from("./"));
-
-        path.push(filename);
-
-        match serde_json::to_string_pretty(column) {
-            Ok(content) => {
-                match tokio::fs::write(path, content).await {
-                    Ok(_) => {
-                        // nothing
-                    }
-                    Err(e) => {
-                        println!("写入字段定义文件失败:{}", e);
-                    }
-                };
-            }
-            Err(e) => {
-                println!("写入字段定义文件失败:{}", e);
-            }
-        }
     }
 
     fn get_output_task(
@@ -130,9 +140,6 @@ pub trait Output: Send + Close + Sync + Debug {
 
         // 合并两个数组
         let columns = OutputColumn::merge_columns(schema_columns, &columns);
-
-        // 写入字段定义文件
-        self.output_schema_to_dir(&columns).await;
 
         if context.skip {
             return Ok(());
@@ -259,14 +266,18 @@ pub struct OutputContext {
     pub concurrency: usize,
     pub limit: Option<usize>,
     pub skip: bool,
+    pub id: String,
+    pub schema: Schema,
 }
 
 impl OutputContext {
-    pub fn new(concurrency: usize, limit: Option<usize>, skip: bool) -> Self {
+    pub fn new(concurrency: usize, limit: Option<usize>, skip: bool, schema: Schema) -> Self {
         Self {
             concurrency,
             limit,
             skip,
+            schema,
+            id: get_random_uuid()
         }
     }
 }

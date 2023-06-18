@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use super::{Close, Output};
+use super::{Close, Output, OutputEnum};
 use crate::{
     core::{
         cli::Cli,
@@ -26,6 +26,7 @@ use rdkafka::{
     producer::FutureProducer,
     ClientConfig, Message,
 };
+use serde_json::json;
 use tokio::{
     sync::{mpsc, Mutex},
     time::timeout,
@@ -160,6 +161,27 @@ impl KafkaOutput {
 
 #[async_trait]
 impl Output for KafkaOutput {
+    fn output_type(&self) -> Option<OutputEnum> {
+        return Some(OutputEnum::Kafka);
+    }
+
+    fn batch(&self) -> Option<usize> {
+        return Some(self.args.batch);
+    }
+
+    fn meta(&self) -> Option<serde_json::Value> {
+        return Some(json!({
+            "host": self.args.host,
+            "port": self.args.port,
+            "topic": self.args.topic
+        }));
+    }
+
+    fn channel_schema(&self) -> Option<ChannelSchema> {
+        return Some(ChannelSchema { batch: self.args.batch, concurrency: self.args.concurrency, count: self.args.count });
+    }
+
+
     fn columns(&self) -> Option<&Vec<OutputColumn>> {
         return Some(&self.columns);
     }

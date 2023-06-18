@@ -6,7 +6,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-
 pub static mut STATICS_LOGGER: Option<StaticsLogger> = None;
 
 #[derive(Debug)]
@@ -27,7 +26,6 @@ pub struct StaticsLog {
 
     completed: bool,
 }
-
 
 #[derive(Debug)]
 pub struct StaticsLogFactory {

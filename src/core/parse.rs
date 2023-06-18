@@ -3,15 +3,15 @@ use super::{
     cli::Cli,
     error::{Error, Result},
 };
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::{
     create_context, impl_func_is_primitive_by_parse,
     model::{
-        column::DataTypeEnum,
+        column::{DataTypeEnum, FixedValue},
         schema::{OutputSchema, Schema},
     },
-    output::{self, kafka::KafkaOutput, mysql::MysqlOutput, OutputContext},
+    output::{self, kafka::KafkaOutput, mysql::MysqlOutput, Output, OutputContext},
 };
 
 impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
@@ -62,6 +62,19 @@ pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
             return None;
         }
     };
+}
+
+pub fn parse_schema_from_outputs(outputs: &Vec<Box<dyn Output>>) -> HashMap<String, OutputSchema> {
+    let mut res = HashMap::new();
+
+    for output in outputs {
+        match output.transfer_to_schema() {
+            Some(schema) => res.insert(output.name().to_owned(), schema),
+            None => continue,
+        };
+    }
+
+    return res;
 }
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
@@ -119,7 +132,14 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, Ou
     });
 
     let concurrency = concurrency.unwrap_or(MIN_THREAD_SIZE);
-    let context = create_context(concurrency, limit, skip);
+
+    let schema = Schema::new(
+        Some(interval),
+        Some(concurrency),
+        parse_schema_from_outputs(&outputs),
+    );
+
+    let context = create_context(concurrency, limit, skip, schema);
 
     return Ok((outputs, interval, context));
 }
@@ -135,16 +155,16 @@ pub fn parse_type(val: &serde_json::Value) -> DataTypeEnum {
 
             let val = val.unwrap_or(d);
             if is_u8(&val) {
-                return DataTypeEnum::UInt8;
+                return DataTypeEnum::UInt8(FixedValue::None);
             }
             if is_u16(&val) {
-                return DataTypeEnum::UInt16;
+                return DataTypeEnum::UInt16(FixedValue::None);
             }
             if is_u32(&val) {
-                return DataTypeEnum::UInt32;
+                return DataTypeEnum::UInt32(FixedValue::None);
             }
             if is_u64(&val) {
-                return DataTypeEnum::UInt64;
+                return DataTypeEnum::UInt64(FixedValue::None);
             }
         }
 
@@ -154,54 +174,54 @@ pub fn parse_type(val: &serde_json::Value) -> DataTypeEnum {
 
             let val = val.unwrap_or(d);
             if is_i8(&val) {
-                return DataTypeEnum::Int8;
+                return DataTypeEnum::Int8(FixedValue::None);
             }
             if is_i16(&val) {
-                return DataTypeEnum::Int16;
+                return DataTypeEnum::Int16(FixedValue::None);
             }
             if is_i32(&val) {
-                return DataTypeEnum::Int32;
+                return DataTypeEnum::Int32(FixedValue::None);
             }
             if is_i64(&val) {
-                return DataTypeEnum::Int64;
+                return DataTypeEnum::Int64(FixedValue::None);
             }
         }
     }
 
     if val.is_f64() {
-        return DataTypeEnum::Float64;
+        return DataTypeEnum::Float64(FixedValue::None);
     }
 
     if val.is_boolean() {
-        return DataTypeEnum::Boolean;
+        return DataTypeEnum::Boolean(FixedValue::None);
     }
 
     if val.is_null() {
-        return DataTypeEnum::Nullable;
+        return DataTypeEnum::Nullable(FixedValue::None);
     }
 
     let val = val.as_str().unwrap_or("null");
 
     if is_datetime(val) {
-        return DataTypeEnum::DateTime;
+        return DataTypeEnum::DateTime(FixedValue::None);
     }
     if is_ipv6(val) {
-        return DataTypeEnum::IPv6;
+        return DataTypeEnum::IPv6(FixedValue::None);
     }
     if is_ipv4(val) {
-        return DataTypeEnum::IPv4;
+        return DataTypeEnum::IPv4(FixedValue::None);
     }
     if is_email(val) {
-        return DataTypeEnum::Email;
+        return DataTypeEnum::Email(FixedValue::None);
     }
     if is_phone(val) {
-        return DataTypeEnum::Phone;
+        return DataTypeEnum::Phone(FixedValue::None);
     }
     if is_null(val) {
-        return DataTypeEnum::Nullable;
+        return DataTypeEnum::Nullable(FixedValue::None);
     }
     if is_string(val) {
-        return DataTypeEnum::String;
+        return DataTypeEnum::String(FixedValue::None);
     }
     return DataTypeEnum::Unknown;
 }

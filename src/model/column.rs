@@ -89,39 +89,51 @@ impl OutputColumn {
     }
 }
 
+///UInt8(8)
+///UInt8([8,8,4])
+///UInt8(8..4)
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum FixedValue {
+    Single(String),
+    Array(Vec<String>),
+    Range(String, String),
+    None,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DataTypeEnum {
-    UInt8,
-    UInt16,
-    UInt32,
-    UInt64,
-    Int8,
-    Int16,
-    Email,
-    Password,
-    Username,
-    Word,
-    Sentence,
-    Paragraph,
-    City,
-    Country,
-    Phone,
-    Int32,
-    Int64,
-    Float32,
-    Float64,
-    String,
-    FixedString,
-    Date,
-    Time,
-    Timestamp,
-    DateTime,
-    DateTime64,
-    Nullable,
-    UUID,
-    IPv4,
-    IPv6,
-    Boolean,
+    UInt8(FixedValue),
+    UInt16(FixedValue),
+    UInt32(FixedValue),
+    UInt64(FixedValue),
+    Int8(FixedValue),
+    Int16(FixedValue),
+    Email(FixedValue),
+    Password(FixedValue),
+    Username(FixedValue),
+    Word(FixedValue),
+    Sentence(FixedValue),
+    Paragraph(FixedValue),
+    City(FixedValue),
+    Country(FixedValue),
+    Phone(FixedValue),
+    Int32(FixedValue),
+    Int64(FixedValue),
+    Float32(FixedValue),
+    Float64(FixedValue),
+    String(FixedValue),
+    FixedString(FixedValue),
+    Date(FixedValue),
+    Time(FixedValue),
+    Timestamp(FixedValue),
+    DateTime(FixedValue),
+    DateTime64(FixedValue),
+    Nullable(FixedValue),
+    UUID(FixedValue),
+    IPv4(FixedValue),
+    IPv6(FixedValue),
+    Boolean(FixedValue),
 
     Unknown,
 }
@@ -141,7 +153,28 @@ impl DataTypeEnum {
 
 lazy_static! {
     pub static ref DATA_TYPE_REGEX: Regex =
-        Regex::new(r"(?P<tp>\w+)(\((\d+)\))?\s*(?P<ex>\w*)").unwrap();
+        Regex::new(r"(?P<tp>\w+)(\((?P<range>.+)\))?\s*(?P<ex>\w*)").unwrap();
+}
+
+pub fn parse_fixed_value(val: &str) -> FixedValue {
+    if val.len() == 0 {
+        return FixedValue::None;
+    }
+
+    if val.contains(',') {
+        let vals: Vec<String> = val.split(',').map(|s| s.to_owned()).collect();
+        return FixedValue::Array(vals);
+    }
+
+    if val.contains("..") {
+        let vals: Vec<String> = val.split(',').map(|s| s.to_owned()).collect();
+        if vals.len() != 2 {
+            return FixedValue::Single(val.to_owned());
+        }
+        return FixedValue::Range(vals[0].to_owned(), vals[1].to_owned());
+    }
+
+    return FixedValue::Single(val.to_owned());
 }
 
 impl FromStr for DataTypeEnum {
@@ -151,45 +184,46 @@ impl FromStr for DataTypeEnum {
         let match_str = s.as_str();
         let caps = DATA_TYPE_REGEX.captures(match_str).unwrap();
         let mut tp_str = String::from(&caps["tp"]);
-
+        let range = &caps["range"];
+        let fixed_value: FixedValue = parse_fixed_value(range);
         if &caps["ex"].len() > &0 {
             tp_str = format!("{} {}", &caps["tp"], &caps["ex"]);
         }
         match tp_str.as_str() {
-            "TINYINT UNSIGNED" => Ok(DataTypeEnum::UInt8),
-            "TINYINT" => Ok(DataTypeEnum::Int8),
-            "SMALLINT" => Ok(DataTypeEnum::Int16),
-            "SMALLINT UNSIGNED" => Ok(DataTypeEnum::UInt16),
-            "MEDIUMINT" => Ok(DataTypeEnum::Int32),
-            "MEDIUMINT UNSIGNED" => Ok(DataTypeEnum::UInt32),
-            "INT" => Ok(DataTypeEnum::Int32),
-            "INT UNSIGNED" => Ok(DataTypeEnum::Int32),
-            "BIGINT" => Ok(DataTypeEnum::Int64),
-            "BIGINT UNSIGNED" => Ok(DataTypeEnum::UInt64),
-            "FLOAT" => Ok(DataTypeEnum::Float32),
-            "DOUBLE" => Ok(DataTypeEnum::Float64),
-            "DATE" => Ok(DataTypeEnum::Date),
-            "TIME" => Ok(DataTypeEnum::Time),
-            "DATETIME" => Ok(DataTypeEnum::DateTime),
-            "TIMESTAMP" => Ok(DataTypeEnum::Timestamp),
-            "CHAR" => Ok(DataTypeEnum::String),
-            "VARCHAR" => Ok(DataTypeEnum::String),
-            "TINYBLOB" => Ok(DataTypeEnum::String),
-            "TINYTEXT" => Ok(DataTypeEnum::String),
-            "BLOB" => Ok(DataTypeEnum::String),
-            "TEXT" => Ok(DataTypeEnum::String),
-            "MEDIUMBLOB" => Ok(DataTypeEnum::String),
-            "MEDIUMTEXT" => Ok(DataTypeEnum::String),
-            "LONGBLOB" => Ok(DataTypeEnum::String),
-            "PASSWORD" => Ok(DataTypeEnum::Password),
-            "USERNAME" => Ok(DataTypeEnum::Username),
-            "EMAIL" => Ok(DataTypeEnum::Email),
-            "PHONE" => Ok(DataTypeEnum::Phone),
-            "IPV4" => Ok(DataTypeEnum::IPv4),
-            "IPV6" => Ok(DataTypeEnum::IPv6),
-            "UUID" => Ok(DataTypeEnum::UUID),
-            "CITY" => Ok(DataTypeEnum::City),
-            "COUNTRY" => Ok(DataTypeEnum::Country),
+            "TINYINT UNSIGNED" => Ok(DataTypeEnum::UInt8(fixed_value)),
+            "TINYINT" => Ok(DataTypeEnum::Int8(fixed_value)),
+            "SMALLINT" => Ok(DataTypeEnum::Int16(fixed_value)),
+            "SMALLINT UNSIGNED" => Ok(DataTypeEnum::UInt16(fixed_value)),
+            "MEDIUMINT" => Ok(DataTypeEnum::Int32(fixed_value)),
+            "MEDIUMINT UNSIGNED" => Ok(DataTypeEnum::UInt32(fixed_value)),
+            "INT" => Ok(DataTypeEnum::Int32(fixed_value)),
+            "INT UNSIGNED" => Ok(DataTypeEnum::Int32(fixed_value)),
+            "BIGINT" => Ok(DataTypeEnum::Int64(fixed_value)),
+            "BIGINT UNSIGNED" => Ok(DataTypeEnum::UInt64(fixed_value)),
+            "FLOAT" => Ok(DataTypeEnum::Float32(fixed_value)),
+            "DOUBLE" => Ok(DataTypeEnum::Float64(fixed_value)),
+            "DATE" => Ok(DataTypeEnum::Date(fixed_value)),
+            "TIME" => Ok(DataTypeEnum::Time(fixed_value)),
+            "DATETIME" => Ok(DataTypeEnum::DateTime(fixed_value)),
+            "TIMESTAMP" => Ok(DataTypeEnum::Timestamp(fixed_value)),
+            "CHAR" => Ok(DataTypeEnum::String(fixed_value)),
+            "VARCHAR" => Ok(DataTypeEnum::String(fixed_value)),
+            "TINYBLOB" => Ok(DataTypeEnum::String(fixed_value)),
+            "TINYTEXT" => Ok(DataTypeEnum::String(fixed_value)),
+            "BLOB" => Ok(DataTypeEnum::String(fixed_value)),
+            "TEXT" => Ok(DataTypeEnum::String(fixed_value)),
+            "MEDIUMBLOB" => Ok(DataTypeEnum::String(fixed_value)),
+            "MEDIUMTEXT" => Ok(DataTypeEnum::String(fixed_value)),
+            "LONGBLOB" => Ok(DataTypeEnum::String(fixed_value)),
+            "PASSWORD" => Ok(DataTypeEnum::Password(fixed_value)),
+            "USERNAME" => Ok(DataTypeEnum::Username(fixed_value)),
+            "EMAIL" => Ok(DataTypeEnum::Email(fixed_value)),
+            "PHONE" => Ok(DataTypeEnum::Phone(fixed_value)),
+            "IPV4" => Ok(DataTypeEnum::IPv4(fixed_value)),
+            "IPV6" => Ok(DataTypeEnum::IPv6(fixed_value)),
+            "UUID" => Ok(DataTypeEnum::UUID(fixed_value)),
+            "CITY" => Ok(DataTypeEnum::City(fixed_value)),
+            "COUNTRY" => Ok(DataTypeEnum::Country(fixed_value)),
             at => Err(Error::Io(IoError::UnkownTypeError(at.to_string()))),
         }
     }
@@ -236,10 +270,10 @@ mod tests {
         }
 
         let c4m = OutputColumn::map_columns(&_c3);
-        assert!((*c4m.get("PACKET_ID").unwrap()).eq(&DataTypeEnum::UInt64));
-        assert!((*c4m.get("PACKET_NAME").unwrap()).eq(&DataTypeEnum::String));
-        assert!((*c4m.get("ip").unwrap()).eq(&DataTypeEnum::IPv4));
-        assert!((*c4m.get("password").unwrap()).eq(&DataTypeEnum::String));
-        assert!((*c4m.get("username").unwrap()).eq(&DataTypeEnum::String));
+        assert!((*c4m.get("PACKET_ID").unwrap()).eq(&DataTypeEnum::UInt64(FixedValue::None)));
+        assert!((*c4m.get("PACKET_NAME").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
+        assert!((*c4m.get("ip").unwrap()).eq(&DataTypeEnum::IPv4(FixedValue::None)));
+        assert!((*c4m.get("password").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
+        assert!((*c4m.get("username").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
     }
 }

@@ -1,9 +1,4 @@
-use std::{
-    sync::{
-        atomic::{AtomicI64},
-        Arc,
-    },
-};
+use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
 use rdkafka::{
@@ -13,10 +8,7 @@ use rdkafka::{
 use tokio::sync::Mutex;
 
 use crate::{
-    core::{
-        fake::{get_random_string},
-        limit::token::TokenBuketLimiter,
-    },
+    core::{fake::get_random_string, limit::token::TokenBuketLimiter},
     model::column::OutputColumn,
 };
 

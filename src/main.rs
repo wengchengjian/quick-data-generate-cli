@@ -1,4 +1,4 @@
-
+use std::path::PathBuf;
 
 use crate::core::error::{Error, IoError};
 
@@ -6,6 +6,7 @@ use crate::core::cli::Cli;
 use crate::core::error::Result;
 use crate::core::log::{StaticsLogger, STATICS_LOGGER};
 use crate::core::parse::parse_output;
+use model::schema::Schema;
 use output::Output;
 use structopt::StructOpt;
 use tokio::signal;
@@ -39,8 +40,13 @@ async fn main() -> Result<()> {
 
 use output::{Close, DelegatedOutput, OutputContext};
 
-pub fn create_context(concurrency: usize, limit: Option<usize>, skip: bool) -> OutputContext {
-    return OutputContext::new(concurrency, limit, skip);
+pub fn create_context(
+    concurrency: usize,
+    limit: Option<usize>,
+    skip: bool,
+    schema: Schema,
+) -> OutputContext {
+    return OutputContext::new(concurrency, limit, skip, schema);
 }
 
 /// 创建代理输出任务
@@ -83,8 +89,40 @@ pub async fn execute(cli: Cli) -> Result<()> {
             println!("\nreceived stop signal, exiting...");
         }
     }
+    //输出schema,以便修正或重复利用
+    let path = output_schema_to_dir(&context.id, &context.schema).await;
+    println!("schema文件输出至: {:?}", path);
     // 关闭任务
     output.close().await?;
 
     Ok(())
+}
+
+async fn output_schema_to_dir(id: &str, schema: &Schema) -> PathBuf {
+
+    let filename = format!("{}.{}", id, "json");
+
+    let mut path = home::home_dir().unwrap_or(PathBuf::from("./"));
+
+
+    path.push(filename);
+
+    let ab_path = tokio::fs::canonicalize(&path).await.unwrap();
+
+    match serde_json::to_string_pretty(schema) {
+        Ok(content) => {
+            match tokio::fs::write(path, content).await {
+                Ok(_) => {
+                    // nothing
+                }
+                Err(e) => {
+                    println!("写入schema文件失败:{}", e);
+                }
+            };
+        }
+        Err(e) => {
+            println!("写入schema文件失败:{}", e);
+        }
+    };
+    return ab_path;
 }

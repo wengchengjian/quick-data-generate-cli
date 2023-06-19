@@ -9,7 +9,8 @@ use crate::core::parse::parse_output;
 use model::schema::Schema;
 use output::Output;
 use structopt::StructOpt;
-use tokio::signal;
+use tokio::fs::File;
+use tokio::{fs, signal};
 // use tracing::{error, info, Level};
 // use tracing_subscriber::FmtSubscriber;
 
@@ -99,15 +100,13 @@ pub async fn execute(cli: Cli) -> Result<()> {
 }
 
 async fn output_schema_to_dir(id: &str, schema: &Schema) -> PathBuf {
-
     let filename = format!("{}.{}", id, "json");
 
     let mut path = home::home_dir().unwrap_or(PathBuf::from("./"));
 
-
     path.push(filename);
 
-    let ab_path = tokio::fs::canonicalize(&path).await.unwrap();
+    let as_path = path.clone();
 
     match serde_json::to_string_pretty(schema) {
         Ok(content) => {
@@ -124,5 +123,7 @@ async fn output_schema_to_dir(id: &str, schema: &Schema) -> PathBuf {
             println!("写入schema文件失败:{}", e);
         }
     };
+    let ab_path = tokio::fs::canonicalize(&as_path).await.unwrap();
+
     return ab_path;
 }

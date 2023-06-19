@@ -21,6 +21,7 @@ use crate::{
 
 pub mod kafka;
 pub mod mysql;
+pub mod csv;
 
 #[async_trait]
 pub trait Exector: Send + Sync {

@@ -11,7 +11,7 @@ use crate::{
         column::{DataTypeEnum, FixedValue},
         schema::{OutputSchema, Schema},
     },
-    output::{self, kafka::KafkaOutput, mysql::MysqlOutput, Output, OutputContext},
+    output::{self, kafka::KafkaOutput, mysql::MysqlOutput, Output, OutputContext, csv::CsvOutput},
 };
 
 impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
@@ -38,6 +38,11 @@ pub fn parse_output_from_schema(
             output.name = name;
             Ok(Box::new(output))
         }
+        output::OutputEnum::Csv => {
+            let mut output = CsvOutput::try_from(schema)?;
+            output.name = name;
+            Ok(Box::new(output))
+        }
     }
 }
 
@@ -57,6 +62,7 @@ pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
             output::OutputEnum::Kafka => return KafkaOutput::from_cli(cli).ok(),
 
             output::OutputEnum::Mysql => return MysqlOutput::from_cli(cli).ok(),
+            output::OutputEnum::Csv => return CsvOutput::from_cli(cli).ok(),
         },
         None => {
             return None;
@@ -84,17 +90,20 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, Ou
     let interval = cli.interval;
     let mut concurrency = cli.concurrency;
 
-    let _ = cli.output.insert(output::OutputEnum::Mysql);
+    // let _ = cli.output.insert(output::OutputEnum::Mysql);
     // let _ = cli.topic.insert("FileHttpLogPushService".to_string());
-    cli.host = "localhost".to_owned();
-    let _ = cli.user.insert("root".to_string());
-    let _ = cli.database.insert("tests".to_string());
-    let _ = cli.table.insert("UPGRADE_PACKET_INFO".to_string());
-    let _ = cli.password.insert("wcj520600".to_string());
-    let _ = cli.batch.insert(1000);
+    // cli.host = "192.168.180.217".to_owned();
+    // let _ = cli.user.insert("root".to_string());
+    // let _ = cli.database.insert("tests".to_string());
+    // let _ = cli.table.insert("bfc_model_task".to_string());
+    // let _ = cli.password.insert("bfcdb@123".to_string());
+    // let _ = cli.batch.insert(1000);
     // let _ = cli.count.insert(50000);
-    let _ = cli.concurrency.insert(1);
+    // let _ = cli.concurrency.insert(1);
     // let _ = cli.interval.insert(1);
+    let _ = cli.schema.insert(PathBuf::from(
+        "C:\\Users\\Administrator\\23383409-6532-437b-af7e-ee9cd4b87127.json",
+    ));
 
     if let Some(schema_path) = &cli.schema {
         let schema = parse_schema(schema_path).unwrap();

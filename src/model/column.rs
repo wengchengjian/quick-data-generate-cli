@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, fmt::Display, str::FromStr};
 
 use crate::core::{
     error::{Error, IoError, Result},
@@ -138,6 +138,56 @@ pub enum DataTypeEnum {
     Unknown,
 }
 
+macro_rules! write_schema_string {
+    ($tp: expr, $val: ident, $f: ident) => {
+        match $val {
+            FixedValue::Single(val) => write!($f, "{}([{}])", $tp, val),
+            FixedValue::Array(val) => write!($f, "{}([{}])", $tp, val.join(",")),
+            FixedValue::Range(val1, val2) => write!($f, "{}({}..{})", $tp, val1, val2),
+            FixedValue::None => write!($f, "{}", $tp),
+        }
+    };
+}
+
+impl Display for DataTypeEnum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataTypeEnum::UInt8(val) => write_schema_string!("UInt8", val, f),
+            DataTypeEnum::UInt16(val) => write_schema_string!("UInt16", val, f),
+            DataTypeEnum::UInt32(val) => write_schema_string!("UInt32", val, f),
+            DataTypeEnum::UInt64(val) => write_schema_string!("UInt64", val, f),
+            DataTypeEnum::Int8(val) => write_schema_string!("Int8", val, f),
+            DataTypeEnum::Int16(val) => write_schema_string!("Int16", val, f),
+            DataTypeEnum::Email(val) => write_schema_string!("Email", val, f),
+            DataTypeEnum::Password(val) => write_schema_string!("Password", val, f),
+            DataTypeEnum::Username(val) => write_schema_string!("Username", val, f),
+            DataTypeEnum::Word(val) => write_schema_string!("Word", val, f),
+            DataTypeEnum::Sentence(val) => write_schema_string!("Sentence", val, f),
+            DataTypeEnum::Paragraph(val) => write_schema_string!("Paragraph", val, f),
+            DataTypeEnum::City(val) => write_schema_string!("City", val, f),
+            DataTypeEnum::Country(val) => write_schema_string!("Country", val, f),
+            DataTypeEnum::Phone(val) => write_schema_string!("Phone", val, f),
+            DataTypeEnum::Int32(val) => write_schema_string!("Int32", val, f),
+            DataTypeEnum::Int64(val) => write_schema_string!("Int64", val, f),
+            DataTypeEnum::Float32(val) => write_schema_string!("Float32", val, f),
+            DataTypeEnum::Float64(val) => write_schema_string!("Float64", val, f),
+            DataTypeEnum::String(val) => write_schema_string!("String", val, f),
+            DataTypeEnum::FixedString(val) => write_schema_string!("FixedString", val, f),
+            DataTypeEnum::Date(val) => write_schema_string!("Date", val, f),
+            DataTypeEnum::Time(val) => write_schema_string!("Time", val, f),
+            DataTypeEnum::Timestamp(val) => write_schema_string!("Timestamp", val, f),
+            DataTypeEnum::DateTime(val) => write_schema_string!("DateTime", val, f),
+            DataTypeEnum::DateTime64(val) => write_schema_string!("DateTime64", val, f),
+            DataTypeEnum::Nullable(val) => write_schema_string!("Nullable", val, f),
+            DataTypeEnum::UUID(val) => write_schema_string!("UUID", val, f),
+            DataTypeEnum::IPv4(val) => write_schema_string!("IPv4", val, f),
+            DataTypeEnum::IPv6(val) => write_schema_string!("IPv6", val, f),
+            DataTypeEnum::Boolean(val) => write_schema_string!("Boolean", val, f),
+            DataTypeEnum::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
 impl DataTypeEnum {
     pub fn parse_type_from_value(val: &serde_json::Value) -> DataTypeEnum {
         return parse_type(val);
@@ -153,28 +203,28 @@ impl DataTypeEnum {
 
 lazy_static! {
     pub static ref DATA_TYPE_REGEX: Regex =
-        Regex::new(r"(?P<tp>\w+)(\((?P<range>.+)\))?\s*(?P<ex>\w*)").unwrap();
+        Regex::new(r"(?P<tp>\w+)(\((?P<range>.+)\))?\s*(?P<ex>\w*)?").unwrap();
 }
 
 pub fn parse_fixed_value(val: &str) -> FixedValue {
     if val.len() == 0 {
         return FixedValue::None;
     }
-
-    if val.contains(',') {
+    if val.starts_with('[') && val.starts_with(']') {
+        let val = val.strip_prefix('[').unwrap().strip_suffix(']').unwrap();
         let vals: Vec<String> = val.split(',').map(|s| s.to_owned()).collect();
         return FixedValue::Array(vals);
     }
 
     if val.contains("..") {
-        let vals: Vec<String> = val.split(',').map(|s| s.to_owned()).collect();
+        let vals: Vec<String> = val.split("..").map(|s| s.to_owned()).collect();
         if vals.len() != 2 {
             return FixedValue::Single(val.to_owned());
         }
         return FixedValue::Range(vals[0].to_owned(), vals[1].to_owned());
     }
 
-    return FixedValue::Single(val.to_owned());
+    return FixedValue::None;
 }
 
 impl FromStr for DataTypeEnum {
@@ -184,10 +234,17 @@ impl FromStr for DataTypeEnum {
         let match_str = s.as_str();
         let caps = DATA_TYPE_REGEX.captures(match_str).unwrap();
         let mut tp_str = String::from(&caps["tp"]);
-        let range = &caps["range"];
-        let fixed_value: FixedValue = parse_fixed_value(range);
-        if &caps["ex"].len() > &0 {
-            tp_str = format!("{} {}", &caps["tp"], &caps["ex"]);
+        let fixed_value: FixedValue = match caps.name("range") {
+            Some(range) => parse_fixed_value(range.as_str()),
+            None => FixedValue::None,
+        };
+        match caps.name("ex") {
+            Some(ex) => {
+                if ex.as_str().len() > 0 {
+                    tp_str = format!("{} {}", &caps["tp"], &caps["ex"]);
+                }
+            }
+            None => {}
         }
         match tp_str.as_str() {
             "TINYINT UNSIGNED" => Ok(DataTypeEnum::UInt8(fixed_value)),
@@ -197,6 +254,14 @@ impl FromStr for DataTypeEnum {
             "MEDIUMINT" => Ok(DataTypeEnum::Int32(fixed_value)),
             "MEDIUMINT UNSIGNED" => Ok(DataTypeEnum::UInt32(fixed_value)),
             "INT" => Ok(DataTypeEnum::Int32(fixed_value)),
+            "INT64" => Ok(DataTypeEnum::Int64(fixed_value)),
+            "INT32" => Ok(DataTypeEnum::Int32(fixed_value)),
+            "INT8" => Ok(DataTypeEnum::Int8(fixed_value)),
+            "INT16" => Ok(DataTypeEnum::Int16(fixed_value)),
+            "UINT16" => Ok(DataTypeEnum::UInt16(fixed_value)),
+            "UINT8" => Ok(DataTypeEnum::UInt8(fixed_value)),
+            "UINT32" => Ok(DataTypeEnum::UInt32(fixed_value)),
+            "UINT64" => Ok(DataTypeEnum::UInt64(fixed_value)),
             "INT UNSIGNED" => Ok(DataTypeEnum::Int32(fixed_value)),
             "BIGINT" => Ok(DataTypeEnum::Int64(fixed_value)),
             "BIGINT UNSIGNED" => Ok(DataTypeEnum::UInt64(fixed_value)),
@@ -206,6 +271,8 @@ impl FromStr for DataTypeEnum {
             "TIME" => Ok(DataTypeEnum::Time(fixed_value)),
             "DATETIME" => Ok(DataTypeEnum::DateTime(fixed_value)),
             "TIMESTAMP" => Ok(DataTypeEnum::Timestamp(fixed_value)),
+            "STRING" => Ok(DataTypeEnum::String(fixed_value)),
+
             "CHAR" => Ok(DataTypeEnum::String(fixed_value)),
             "VARCHAR" => Ok(DataTypeEnum::String(fixed_value)),
             "TINYBLOB" => Ok(DataTypeEnum::String(fixed_value)),

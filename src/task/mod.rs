@@ -5,6 +5,7 @@ use crate::{core::shutdown::Shutdown, exec::Exector};
 pub mod clickhouse;
 pub mod kafka;
 pub mod mysql;
+pub mod csv;
 
 #[async_trait]
 pub trait Task: Send + Sync {

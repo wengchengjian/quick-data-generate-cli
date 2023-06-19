@@ -69,4 +69,8 @@ pub struct Cli {
     /// 是否跳过输出任务， 一般常用于只生成schema文件
     #[structopt(short, long)]
     pub skip: bool,
+
+    /// 本地输出文件参数
+    #[structopt(short, long)]
+    pub filename: Option<String>,
 }

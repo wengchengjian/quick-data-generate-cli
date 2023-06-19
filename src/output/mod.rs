@@ -1,5 +1,7 @@
 use async_trait::async_trait;
+use bloom::BloomFilter;
 use core::fmt::Debug;
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
@@ -13,7 +15,9 @@ use std::{
 use tokio::sync::{broadcast, mpsc, Mutex, Semaphore};
 
 use crate::{
-    core::{limit::token::TokenBuketLimiter, log::register, shutdown::Shutdown, fake::get_random_uuid},
+    core::{
+        fake::get_random_uuid, limit::token::TokenBuketLimiter, log::register, shutdown::Shutdown,
+    },
     model::{
         column::OutputColumn,
         schema::{ChannelSchema, OutputSchema, Schema},
@@ -84,7 +88,13 @@ pub trait Output: Send + Close + Sync + Debug {
                     None => return None,
                 },
                 columns: match self.columns() {
-                    Some(columns) => serde_json::to_value(columns).unwrap(),
+                    Some(columns) => {
+                        let mut res = json!({});
+                        for column in columns {
+                            res[&column.name] = json!(column.data_type().to_string());
+                        }
+                        res
+                    }
                     None => return None,
                 },
                 channel: channel_schema,
@@ -106,6 +116,8 @@ pub trait Output: Send + Close + Sync + Debug {
     fn columns(&self) -> Option<&Vec<OutputColumn>> {
         return None;
     }
+
+    fn columns_mut(&mut self, columns: Vec<OutputColumn>);
 
     async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
         return None;
@@ -139,14 +151,26 @@ pub trait Output: Send + Close + Sync + Debug {
         let schema_columns = self.columns().unwrap_or(&default_columns);
 
         // 合并两个数组
-        let columns = OutputColumn::merge_columns(schema_columns, &columns);
+        let columns = OutputColumn::merge_columns(&columns, &schema_columns);
+        self.columns_mut(columns.clone());
+
+        match self.transfer_to_schema() {
+            Some(schema) => {
+                context
+                    .schema
+                    .outputs
+                    .insert(self.name().to_owned(), schema);
+            }
+            None => {
+                println!("不能解析output的schema");
+            }
+        }
 
         if context.skip {
             return Ok(());
         }
         let (notify_shutdown, _) = broadcast::channel::<()>(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
-
         println!("{} will running...", self.name());
         let limiter = context
             .limit
@@ -233,6 +257,7 @@ impl Output for DelegatedOutput {
     fn name(&self) -> &str {
         return self.name.as_str();
     }
+    fn columns_mut(&mut self, columns: Vec<OutputColumn>) {}
 
     async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
         let outputs = &mut self.outputs;
@@ -277,7 +302,7 @@ impl OutputContext {
             limit,
             skip,
             schema,
-            id: get_random_uuid()
+            id: get_random_uuid(),
         }
     }
 }
@@ -291,7 +316,7 @@ pub enum OutputEnum {
     //
     //    ElasticSearch,
     //
-    //    CSV,
+        Csv,
     //
     //    SqlServer,
 }

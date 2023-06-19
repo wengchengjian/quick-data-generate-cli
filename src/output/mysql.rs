@@ -182,6 +182,9 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::Output for MysqlOutput {
+    fn columns_mut(&mut self, columns: Vec<OutputColumn>) {
+        self.columns = columns;
+    }
 
     fn output_type(&self) -> Option<OutputEnum> {
         return Some(OutputEnum::Mysql);
@@ -203,7 +206,11 @@ impl super::Output for MysqlOutput {
     }
 
     fn channel_schema(&self) -> Option<ChannelSchema> {
-        return Some(ChannelSchema { batch: self.args.batch, concurrency: self.args.concurrency, count: self.args.count });
+        return Some(ChannelSchema {
+            batch: self.args.batch,
+            concurrency: self.args.concurrency,
+            count: self.args.count,
+        });
     }
 
     fn columns(&self) -> Option<&Vec<OutputColumn>> {
@@ -224,7 +231,12 @@ impl super::Output for MysqlOutput {
             x => Some(x),
         }
     }
-
+    async fn after_run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
+        for pool in self.pool_cache.values() {
+            let _ = pool.to_owned().disconnect().await;
+        }
+        Ok(())
+    }
     async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
         // 获取连接池
         let pool = self.connect().expect("获取mysql连接失败!");
@@ -296,7 +308,7 @@ pub struct MysqlArgs {
     pub concurrency: usize,
 }
 
-use super::{Close, Output, OutputEnum};
+use super::{Close, Output, OutputContext, OutputEnum};
 
 #[derive(Debug)]
 pub struct MysqlOutput {

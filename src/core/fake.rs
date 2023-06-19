@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
+use chrono::{Local, NaiveDateTime};
 use fake::faker::address::raw::*;
 use fake::faker::internet::raw::*;
 use fake::faker::job::raw::Title;
@@ -15,7 +16,12 @@ use mysql_async::Params;
 use rand::{thread_rng, Rng};
 use serde_json::json;
 
-static DATE_TIME_FORMAT: &[FormatItem<'_>] =
+static DATE_TIME_FORMAT: &[FormatItem<'_>] = format_description!(
+    "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour \
+    sign:mandatory]:[offset_minute]:[offset_second]"
+);
+
+static FORMAT_DATE_TIME: &[FormatItem<'_>] =
     format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");
 
 pub fn get_random_u8() -> u8 {
@@ -183,11 +189,25 @@ pub fn get_random_time_en() -> time::Time {
 }
 
 pub fn get_random_date_between_str(start: &str, end: &str) -> time::OffsetDateTime {
-    let start = time::OffsetDateTime::parse(start, &DATE_TIME_FORMAT)
+    let start = format!("{} +08:00:00", start);
+    let end = format!("{} +08:00:00", end);
+    let start = time::OffsetDateTime::parse(&start, &DATE_TIME_FORMAT)
         .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
-    let end = time::OffsetDateTime::parse(end, &DATE_TIME_FORMAT)
+    let end = time::OffsetDateTime::parse(&end, &DATE_TIME_FORMAT)
         .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
     DateTimeBetween(start, end).fake()
+}
+
+pub fn get_random_date_between_str_to(start: &str, end: &str) -> String {
+    let start = format!("{} +08:00:00", start);
+    let end = format!("{} +08:00:00", end);
+    let start = time::OffsetDateTime::parse(&start, &DATE_TIME_FORMAT)
+        .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
+    let end = time::OffsetDateTime::parse(&end, &DATE_TIME_FORMAT)
+        .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
+    let time: OffsetDateTime = DateTimeBetween(start, end).fake();
+
+    time.format(&FORMAT_DATE_TIME).unwrap()
 }
 
 pub fn get_random_date_between_zh(
@@ -204,11 +224,29 @@ pub fn get_random_timestamp() -> time::OffsetDateTime {
     )
 }
 
+pub fn get_random_timestamp_string() -> String {
+    get_random_date_between_zh(
+        time::OffsetDateTime::UNIX_EPOCH,
+        datetime!(2038-01-19 03:14:07 UTC),
+    )
+    .format(&DATE_TIME_FORMAT)
+    .unwrap()
+}
+
 pub fn get_random_timestamp_zh_between(
     start: time::OffsetDateTime,
     end: time::OffsetDateTime,
 ) -> time::OffsetDateTime {
     get_random_date_between_zh(start, end)
+}
+
+pub fn get_random_timestamp_zh_between_string(
+    start: time::OffsetDateTime,
+    end: time::OffsetDateTime,
+) -> String {
+    get_random_date_between_zh(start, end)
+        .format(&DATE_TIME_FORMAT)
+        .unwrap()
 }
 
 pub fn get_random_datetime_zh_between(
@@ -218,11 +256,29 @@ pub fn get_random_datetime_zh_between(
     get_random_date_between_zh(start, end)
 }
 
+pub fn get_random_datetime_zh_between_string(
+    start: time::OffsetDateTime,
+    end: time::OffsetDateTime,
+) -> String {
+    get_random_date_between_zh(start, end)
+        .format(&DATE_TIME_FORMAT)
+        .unwrap()
+}
+
 pub fn get_random_datetime_zh() -> time::OffsetDateTime {
     get_random_date_between_zh(
         time::OffsetDateTime::UNIX_EPOCH,
         datetime!(2038-01-19 03:14:07 UTC),
     )
+}
+
+pub fn get_random_datetime_string() -> String {
+    get_random_date_between_zh(
+        time::OffsetDateTime::UNIX_EPOCH,
+        datetime!(2038-01-19 03:14:07 UTC),
+    )
+    .format(&DATE_TIME_FORMAT)
+    .unwrap()
 }
 
 pub fn get_random_datetime_en() -> time::OffsetDateTime {
@@ -243,6 +299,7 @@ pub fn get_random_uuid_between(_: &str, _: &str) -> String {
 use fake::faker::lorem::raw::*;
 use time::format_description::FormatItem;
 use time::macros::{datetime, format_description};
+use time::OffsetDateTime;
 
 use crate::model::column::{DataTypeEnum, FixedValue, OutputColumn};
 use crate::{impl_block_parse_type_val_for_number, impl_block_parse_type_val_for_str};
@@ -314,6 +371,7 @@ pub type Json = serde_json::Value;
 pub fn get_random_string_two(_: &str, _: &str) -> String {
     return get_random_string();
 }
+use bloom::{BloomFilter, ASMS};
 
 /// 通用生成测试数据方法
 pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Json {
@@ -396,31 +454,31 @@ pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Json {
             DataTypeEnum::Timestamp(val) => {
                 impl_block_parse_type_val_for_str!(
                     rng,
-                    get_random_datetime_zh,
+                    get_random_timestamp_string,
                     val,
                     data,
                     name,
-                    get_random_date_between_str
+                    get_random_date_between_str_to
                 )
             }
             DataTypeEnum::DateTime(val) => {
                 impl_block_parse_type_val_for_str!(
                     rng,
-                    get_random_datetime_zh,
+                    get_random_datetime_string,
                     val,
                     data,
                     name,
-                    get_random_date_between_str
+                    get_random_date_between_str_to
                 )
             }
             DataTypeEnum::DateTime64(val) => {
                 impl_block_parse_type_val_for_str!(
                     rng,
-                    get_random_datetime_zh,
+                    get_random_datetime_string,
                     val,
                     data,
                     name,
-                    get_random_date_between_str
+                    get_random_date_between_str_to
                 )
             }
             DataTypeEnum::Nullable(_) => {

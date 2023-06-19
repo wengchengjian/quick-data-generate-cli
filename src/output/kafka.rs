@@ -161,6 +161,10 @@ impl KafkaOutput {
 
 #[async_trait]
 impl Output for KafkaOutput {
+    fn columns_mut(&mut self, columns: Vec<OutputColumn>) {
+        self.columns = columns;
+    }
+
     fn output_type(&self) -> Option<OutputEnum> {
         return Some(OutputEnum::Kafka);
     }
@@ -178,9 +182,12 @@ impl Output for KafkaOutput {
     }
 
     fn channel_schema(&self) -> Option<ChannelSchema> {
-        return Some(ChannelSchema { batch: self.args.batch, concurrency: self.args.concurrency, count: self.args.count });
+        return Some(ChannelSchema {
+            batch: self.args.batch,
+            concurrency: self.args.concurrency,
+            count: self.args.count,
+        });
     }
-
 
     fn columns(&self) -> Option<&Vec<OutputColumn>> {
         return Some(&self.columns);

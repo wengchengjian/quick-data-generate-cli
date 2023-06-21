@@ -27,6 +27,9 @@ pub enum IoError {
     #[error("parse json error: {}", _0)]
     ParseJsonError(#[source] serde_json::Error),
 
+    #[error("undefined columns")]
+    UndefinedColumns,
+
     #[error("cannot access data: {}", _0)]
     DataAccessError(String),
 

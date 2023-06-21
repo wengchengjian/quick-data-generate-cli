@@ -109,18 +109,19 @@ impl super::Output for CsvOutput {
         match path.parent() {
             Some(parent) => {
                 if !parent.exists() {
-                    tokio::fs::create_dir_all(parent).await.unwrap();
-                    tokio::fs::File::create(&path).await.unwrap();
+                    tokio::fs::create_dir_all(parent).await?;
+                    tokio::fs::File::create(&path).await?;
                 }
 
-                let file = File::create(path).await.unwrap();
+                let file = File::create(path).await?;
                 let mut writer = BufWriter::new(file);
                 let header = self.get_columns_names();
                 let mut buffer = Cursor::new(header.as_str());
                 while buffer.has_remaining() {
-                    writer.write_buf(&mut buffer).await.unwrap();
+                    writer.write_buf(&mut buffer).await?;
                 }
-                writer.flush().await.unwrap();
+                writer.write_u8(b'\n').await?;
+                writer.flush().await?;
             }
             None => {}
         }

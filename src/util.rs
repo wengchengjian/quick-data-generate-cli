@@ -159,8 +159,8 @@ pub async fn get_cpu_info_on_windows() -> f32 {
     let (total_time, elapsed_time) = get_cpu_time();
     tokio::time::sleep(Duration::from_millis(100)).await;
     let (total_time2, elapsed_tim2) = get_cpu_time();
-
-    ((total_time2 - total_time) / (elapsed_tim2 - elapsed_time) * 100.0) as f32
+    (((total_time2 - total_time) / (elapsed_tim2 - elapsed_time) * 100.0)
+        / num_cpus::get_physical() as f64) as f32
 }
 
 fn get_elapsed_time() -> i64 {

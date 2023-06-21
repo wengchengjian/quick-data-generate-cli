@@ -5,9 +5,9 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     core::{limit::token::TokenBuketLimiter, shutdown::Shutdown},
-    exec::{ Exector, csv::CsvTaskExecutor},
+    exec::{csv::CsvTaskExecutor, Exector},
     model::column::OutputColumn,
-    output::{ Close, csv::CsvArgs},
+    output::{csv::CsvArgs, Close},
 };
 
 use super::Task;
@@ -50,7 +50,7 @@ impl CsvTask {
         shutdown: Shutdown,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
         count_rc: Option<Arc<AtomicI64>>,
-        ) -> Self {
+    ) -> Self {
         let columns2 = columns.clone();
         let name2 = name.clone();
         Self {
@@ -61,7 +61,12 @@ impl CsvTask {
             shutdown,
             columns,
             executor: CsvTaskExecutor::new(
-                args.filename.clone(), args.batch, count_rc, columns2, name2, limiter,
+                args.filename.clone(),
+                args.batch,
+                count_rc,
+                columns2,
+                name2,
+                limiter,
             ),
         }
     }

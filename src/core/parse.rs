@@ -11,7 +11,7 @@ use crate::{
         column::{DataTypeEnum, FixedValue},
         schema::{OutputSchema, Schema},
     },
-    output::{self, kafka::KafkaOutput, mysql::MysqlOutput, Output, OutputContext, csv::CsvOutput},
+    output::{self, csv::CsvOutput, kafka::KafkaOutput, mysql::MysqlOutput, Output, OutputContext},
 };
 
 impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
@@ -99,7 +99,7 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, Ou
     // let _ = cli.password.insert("bfcdb@123".to_string());
     // let _ = cli.batch.insert(1000);
     // let _ = cli.count.insert(50000);
-    // let _ = cli.concurrency.insert(1);
+    let _ = cli.concurrency.insert(1);
     // let _ = cli.interval.insert(1);
     let _ = cli.schema.insert(PathBuf::from(
         "C:\\Users\\Administrator\\23383409-6532-437b-af7e-ee9cd4b87127.json",

@@ -316,7 +316,7 @@ pub enum OutputEnum {
     //
     //    ElasticSearch,
     //
-        Csv,
+    Csv,
     //
     //    SqlServer,
 }

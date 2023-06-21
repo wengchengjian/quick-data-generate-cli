@@ -6,12 +6,20 @@ use std::{
 
 use super::Exector;
 use crate::{
-    core::{error::Error, limit::token::TokenBuketLimiter, watch::StopWatch},
+    core::{
+        error::{Error, IoError},
+        limit::token::TokenBuketLimiter,
+        watch::StopWatch,
+    },
     model::column::OutputColumn,
 };
 use async_trait::async_trait;
 use bytes::Buf;
-use tokio::{fs::File, io::BufWriter, sync::Mutex};
+use tokio::{
+    fs::File,
+    io::{AsyncBufReadExt, BufReader, BufWriter},
+    sync::Mutex,
+};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
 #[derive(Debug, Clone)]
@@ -42,18 +50,30 @@ impl CsvTaskExecutor {
             limiter,
         }
     }
-    pub fn get_columns_name(&self) -> String {
-        let mut columns_name = String::new();
-        for column in &self.columns {
-            columns_name.push_str(&column.name());
-            columns_name.push_str(",");
-        }
-        columns_name.pop();
-        columns_name
+    pub async fn get_columns_name(&self) -> crate::Result<String> {
+        let path = PathBuf::from(&self.filename);
+        let mut option = OpenOptions::new();
+        option.read(true);
+        let file = option.open(path).await?;
+        let mut reader = BufReader::new(file);
+        let mut res: String = String::new();
+        reader.read_line(&mut res).await?;
+        return res
+            .split(',')
+            .into_iter()
+            .map(|t| ":".to_owned() + t)
+            .reduce(|acc, e| {
+                if acc.len() == 0 {
+                    return e;
+                } else {
+                    return acc + "," + &e;
+                }
+            })
+            .ok_or(Error::Io(IoError::UndefinedColumns));
     }
 
     fn replace_val(&self, header: String, key: &str, val: &serde_json::Value) -> String {
-        return header.replace(key, val.to_string().as_str());
+        return header.replacen(format!(":{}", key).as_str(), val.to_string().as_str(), 1);
     }
 }
 
@@ -83,7 +103,7 @@ impl Exector for CsvTaskExecutor {
     }
 
     async fn handle_batch(&mut self, vals: Vec<serde_json::Value>) -> crate::Result<()> {
-        let column_names = self.get_columns_name();
+        let column_names = self.get_columns_name().await?;
 
         let mut insert_header = String::new();
 
@@ -95,7 +115,9 @@ impl Exector for CsvTaskExecutor {
                 name_vals = self.replace_val(name_vals, key, &val);
             }
             insert_header.push_str(&name_vals);
-            insert_header.push('\n');
+            if !insert_header.ends_with('\n') {
+                insert_header.push('\n');
+            }
         }
         //        watch.stop();
         insert_header.pop();
@@ -103,13 +125,13 @@ impl Exector for CsvTaskExecutor {
 
         let mut option = OpenOptions::new();
         option.write(true).append(true);
-        let file = option.open(path).await.unwrap();
+        let file = option.open(path).await?;
         let mut writer = BufWriter::new(file);
         let mut buffer = Cursor::new(insert_header.as_bytes());
         while buffer.has_remaining() {
-            writer.write_buf(&mut buffer).await.unwrap();
+            writer.write_buf(&mut buffer).await?;
         }
-        writer.flush().await.unwrap();
+        writer.flush().await?;
 
         Ok(())
     }

@@ -19,9 +19,9 @@ use crate::{
     model::column::OutputColumn,
 };
 
+pub mod csv;
 pub mod kafka;
 pub mod mysql;
-pub mod csv;
 
 #[async_trait]
 pub trait Exector: Send + Sync {

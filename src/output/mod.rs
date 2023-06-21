@@ -31,10 +31,7 @@ pub mod elasticsearch;
 pub mod kafka;
 pub mod mysql;
 
-#[async_trait]
-pub trait Close {
-    async fn close(&mut self) -> crate::Result<()>;
-}
+
 
 #[async_trait]
 pub trait Output: Send + Close + Sync + Debug {
@@ -60,7 +57,7 @@ pub trait Output: Send + Close + Sync + Debug {
         self.after_run(context).await
     }
 
-    fn output_type(&self) -> Option<OutputEnum> {
+    fn output_type(&self) -> Option<SourceEnum> {
         return None;
     }
 
@@ -117,7 +114,8 @@ pub trait Output: Send + Close + Sync + Debug {
         return None;
     }
 
-    fn columns_mut(&mut self, columns: Vec<OutputColumn>);
+    fn columns_mut(&mut self, _columns: Vec<OutputColumn>) {}
+
 
     async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
         return None;
@@ -233,110 +231,7 @@ pub trait Output: Send + Close + Sync + Debug {
     }
 }
 
-#[derive(Debug)]
-pub struct DelegatedOutput {
-    outputs: Vec<Box<dyn Output>>,
-    name: String,
-}
 
-#[async_trait]
-impl Close for DelegatedOutput {
-    async fn close(&mut self) -> crate::Result<()> {
-        let outputs = &mut self.outputs;
 
-        for output in outputs {
-            output.close().await?;
-        }
 
-        Ok(())
-    }
-}
 
-#[async_trait]
-impl Output for DelegatedOutput {
-    fn name(&self) -> &str {
-        return self.name.as_str();
-    }
-    fn columns_mut(&mut self, columns: Vec<OutputColumn>) {}
-
-    async fn run(&mut self, context: &mut OutputContext) -> crate::Result<()> {
-        let outputs = &mut self.outputs;
-
-        for output in outputs {
-            output.execute(context).await?;
-        }
-        Ok(())
-    }
-}
-
-impl DelegatedOutput {
-    pub fn new(outputs: Vec<Box<dyn Output>>) -> Self {
-        Self {
-            outputs,
-            name: "delegate".to_string(),
-        }
-    }
-
-    /// 注册日志并执行任务
-    pub async fn start_output(
-        &mut self,
-        output: &mut Box<dyn Output>,
-        context: &mut OutputContext,
-    ) -> crate::Result<()> {
-        output.run(context).await
-    }
-}
-
-pub struct OutputContext {
-    pub concurrency: usize,
-    pub limit: Option<usize>,
-    pub skip: bool,
-    pub id: String,
-    pub schema: Schema,
-}
-
-impl OutputContext {
-    pub fn new(concurrency: usize, limit: Option<usize>, skip: bool, schema: Schema) -> Self {
-        Self {
-            concurrency,
-            limit,
-            skip,
-            schema,
-            id: get_random_uuid(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum OutputEnum {
-    // ClickHouse,
-    Mysql,
-    //
-    Kafka,
-    //
-    //    ElasticSearch,
-    //
-    Csv,
-    //
-    //    SqlServer,
-}
-
-impl FromStr for OutputEnum {
-    type Err = Box<dyn std::error::Error>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_lowercase();
-
-        let s = s.as_str();
-
-        match s {
-            // "clickhouse" => Ok(OutputEnum::ClickHouse),
-            "mysql" => Ok(OutputEnum::Mysql),
-            "kafka" => Ok(OutputEnum::Kafka),
-            //            "elasticsearch" => Ok(OutputEnum::ElasticSearch),
-            //            "csv" => Ok(OutputEnum::CSV),
-            //            "sqlserver" => Ok(OutputEnum::SqlServer),
-            _ => Err("不支持该输出源".into()),
-        }
-    }
-}

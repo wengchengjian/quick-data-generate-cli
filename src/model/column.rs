@@ -8,12 +8,12 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OutputColumn {
+pub struct DataSourceColumn {
     pub name: String,
     pub data_type: DataTypeEnum,
 }
 
-impl OutputColumn {
+impl DataSourceColumn {
     pub fn new(name: &str, data_type: &str) -> Self {
         let name = name.to_string();
         let data_type = DataTypeEnum::from_str(data_type).unwrap();
@@ -21,18 +21,18 @@ impl OutputColumn {
     }
 
     /// 返回column的map 映射
-    pub fn map_columns(columns: &Vec<OutputColumn>) -> HashMap<&str, &DataTypeEnum> {
+    pub fn map_columns(columns: &Vec<DataSourceColumn>) -> HashMap<&str, &DataTypeEnum> {
         columns
             .iter()
             .map(|column| (column.name.as_str(), &column.data_type))
             .collect()
     }
     /// 从schema中获取columns定义，允许类型未知
-    pub fn get_columns_from_schema(value: &serde_json::Value) -> Vec<OutputColumn> {
+    pub fn get_columns_from_schema(value: &serde_json::Value) -> Vec<DataSourceColumn> {
         if let Some(map) = value.as_object() {
             return map
                 .into_iter()
-                .map(|(key, value)| OutputColumn {
+                .map(|(key, value)| DataSourceColumn {
                     name: key.clone(),
                     data_type: match DataTypeEnum::from_str(value.as_str().unwrap()) {
                         Ok(dt) => dt,
@@ -46,11 +46,11 @@ impl OutputColumn {
     }
 
     /// 从schema中获取columns定义，允许类型未知
-    pub fn get_columns_from_value(value: &serde_json::Value) -> Vec<OutputColumn> {
+    pub fn get_columns_from_value(value: &serde_json::Value) -> Vec<DataSourceColumn> {
         if let Some(map) = value.as_object() {
             return map
                 .into_iter()
-                .map(|(key, value)| OutputColumn {
+                .map(|(key, value)| DataSourceColumn {
                     name: key.clone(),
                     data_type: DataTypeEnum::parse_type_from_value(value),
                 })
@@ -62,16 +62,16 @@ impl OutputColumn {
 
     /// 合并两个列数组,target中已经有的,以target为准
     pub fn merge_columns(
-        source: &Vec<OutputColumn>,
-        target: &Vec<OutputColumn>,
-    ) -> Vec<OutputColumn> {
-        let mut c1 = OutputColumn::map_columns(source);
-        let c2 = OutputColumn::map_columns(target);
+        source: &Vec<DataSourceColumn>,
+        target: &Vec<DataSourceColumn>,
+    ) -> Vec<DataSourceColumn> {
+        let mut c1 = DataSourceColumn::map_columns(source);
+        let c2 = DataSourceColumn::map_columns(target);
 
         c1.extend(c2);
 
         c1.into_iter()
-            .map(|(key, val)| OutputColumn {
+            .map(|(key, val)| DataSourceColumn {
                 name: key.to_string(),
                 data_type: val.clone(),
             })
@@ -79,7 +79,7 @@ impl OutputColumn {
     }
 }
 
-impl OutputColumn {
+impl DataSourceColumn {
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -314,7 +314,7 @@ mod tests {
         let data = std::fs::read(path_buf).unwrap();
 
         let val = serde_json::from_slice(&data).unwrap();
-        let columns = OutputColumn::get_columns_from_value(&val);
+        let columns = DataSourceColumn::get_columns_from_value(&val);
 
         assert!(columns.len() > 0);
     }
@@ -331,12 +331,12 @@ mod tests {
 
         let mut _c3 = vec![];
         if outputs1[0].name().eq("mysql-output") {
-            _c3 = OutputColumn::merge_columns(c1, c2);
+            _c3 = DataSourceColumn::merge_columns(c1, c2);
         } else {
-            _c3 = OutputColumn::merge_columns(c2, c1);
+            _c3 = DataSourceColumn::merge_columns(c2, c1);
         }
 
-        let c4m = OutputColumn::map_columns(&_c3);
+        let c4m = DataSourceColumn::map_columns(&_c3);
         assert!((*c4m.get("PACKET_ID").unwrap()).eq(&DataTypeEnum::UInt64(FixedValue::None)));
         assert!((*c4m.get("PACKET_NAME").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
         assert!((*c4m.get("ip").unwrap()).eq(&DataTypeEnum::IPv4(FixedValue::None)));

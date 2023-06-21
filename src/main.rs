@@ -13,7 +13,8 @@ use tokio::fs::File;
 use tokio::{fs, signal};
 // use tracing::{error, info, Level};
 // use tracing_subscriber::FmtSubscriber;
-
+pub mod filter;
+pub mod datasource;
 pub mod core;
 pub mod exec;
 pub mod macros;
@@ -30,7 +31,9 @@ async fn main() -> Result<()> {
 
     core::check::check_args(&mut cli);
 
-    println!("pid {}, process starting... ", std::process::id());
+    let pid: u32 = std::process::id();
+
+    println!("pid {}, process starting... ", pid);
 
     if let Err(e) = execute(cli).await {
         println!("execute error: {}", e);
@@ -76,8 +79,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
 
     let (mut output, mut context) = create_delegate_output(cli).await?;
     tokio::select! {
-        res = output.execute(&mut context) => {
-            if let Err(err) = res {
+        result = output.execute(&mut context) => {
+            if let Err(err) = result {
                 println!("execute error: {}", err);
             } else {
                 println!("\nquick-data-generator is exiting...");
@@ -100,7 +103,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
 }
 
 async fn output_schema_to_dir(id: &str, schema: &Schema) -> PathBuf {
-    let filename = format!("{}.{}", id, "json");
+    let filename = format!("/{}/{}.{}","schema", id, "json");
 
     let mut path = home::home_dir().unwrap_or(PathBuf::from("./"));
 

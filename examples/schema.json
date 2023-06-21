@@ -1,8 +1,8 @@
 {
-    "outputs":{
-        "mysql-output": {
-            "output": "Mysql",
-            
+    "sources": [
+        {
+            "name": "mysql-output",
+            "source": "Mysql",
             "meta": {
                 "host": "127.0.0.1",
                 "port": 3306,
@@ -32,13 +32,12 @@
                 "batch": 2000,
                 "concurrency": 2,
                 "count": 10000
-            }
-            
+            },
+            "sources": ["fake_data_source"]
         },
-
-        "mysql-output2": {
-            "output": "Mysql",
-
+        {
+            "name":"mysql-output2",
+            "source": "Mysql",
             "meta": {
                 "host": "127.0.0.1",
                 "port": 3306,
@@ -68,10 +67,22 @@
                 "batch": 2000,
                 "concurrency": 2,
                 "count": 10000
-            }
-
+            },
+            "source":["fake_data_source", "mysql-output"]
+        },
+        {
+            "name": "local-csv",
+            "source": "Csv",
+            "meta": {
+                "filename": "examples/test.csv",
+            },
+            "channel": {
+                "batch": 2000,
+                "concurrency": 2,
+                "count": 10000
+            },
+            "source":["fake_data_source"]
         }
-    },
+    ],
     "interval": 5,
-    "concurrency": 8
 }

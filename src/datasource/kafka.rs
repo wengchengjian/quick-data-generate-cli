@@ -38,7 +38,6 @@ pub struct KafkaDataSource {
     pub shutdown: AtomicBool,
     pub columns: Vec<DataSourceColumn>,
     pub sources: Vec<String>,
-    
 }
 
 #[derive(Debug)]

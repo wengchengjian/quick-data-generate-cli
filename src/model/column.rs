@@ -300,7 +300,7 @@ impl FromStr for DataTypeEnum {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::core::parse::{parse_outputs_from_schema, parse_schema};
+    use crate::core::parse::{parse_schema, parse_datasources_from_schema};
 
     use super::*;
 
@@ -325,7 +325,7 @@ mod tests {
 
         let schema = parse_schema(&path_buf).expect("解析schema文件失败");
 
-        let outputs1 = parse_outputs_from_schema(schema).expect("解析output失败");
+        let outputs1 = parse_datasources_from_schema(schema).expect("解析output失败");
         let c1 = outputs1[0].columns().unwrap();
         let c2 = outputs1[1].columns().unwrap();
 

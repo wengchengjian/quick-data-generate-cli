@@ -33,7 +33,7 @@
                 "concurrency": 2,
                 "count": 10000
             },
-            "sources": ["fake_data_source"]
+            "sources": ["fake_datasource"]
         },
         {
             "name":"mysql-output2",
@@ -68,21 +68,24 @@
                 "concurrency": 2,
                 "count": 10000
             },
-            "source":["fake_data_source", "mysql-output"]
+            "sources":["fake_datasource", "mysql-output"]
         },
         {
             "name": "local-csv",
             "source": "Csv",
             "meta": {
-                "filename": "examples/test.csv",
+                "filename": "examples/test.csv"
+            },
+            "columns": {
+
             },
             "channel": {
                 "batch": 2000,
                 "concurrency": 2,
                 "count": 10000
             },
-            "source":["fake_data_source"]
+            "sources":["fake_datasource"]
         }
     ],
-    "interval": 5,
+    "interval": 5
 }

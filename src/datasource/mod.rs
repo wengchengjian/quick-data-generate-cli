@@ -63,7 +63,6 @@ impl ChannelContext {
 }
 
 pub struct DataSourceContext {
-    pub concurrency: usize,
     pub limit: Option<usize>,
     pub skip: bool,
     pub id: String,
@@ -72,9 +71,8 @@ pub struct DataSourceContext {
 
 
 impl DataSourceContext {
-    pub fn new(concurrency: usize, limit: Option<usize>, skip: bool, schema: Schema) -> Self {
+    pub fn new(limit: Option<usize>, skip: bool, schema: Schema) -> Self {
         Self {
-            concurrency,
             limit,
             skip,
             schema,
@@ -102,7 +100,7 @@ pub struct MpscDataSourceChannel {
 }
 
 impl MpscDataSourceChannel {
-    pub fn new(producer: Vec<Box<dyn DataSourceChannel>>,consumer: Box<dyn DataSourceChannel>) -> Self {
+    pub fn new(producer: Vec<Box<dyn DataSourceChannel>>, consumer: Box<dyn DataSourceChannel>) -> Self {
         Self { producer, consumer }
     }
 }
@@ -122,6 +120,9 @@ impl Close for MpscDataSourceChannel {
 
 #[async_trait]
 impl DataSourceChannel for MpscDataSourceChannel {
+    fn need_log(&self) -> bool {
+        return false;
+    }
 
     fn name(&self) -> &str {
         return "mspc-datasource";
@@ -192,7 +193,7 @@ impl DelegatedDataSource {
 
 
 #[async_trait]
-pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close{
+pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
     
     fn need_log(&self) -> bool {
         return true;

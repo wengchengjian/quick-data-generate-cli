@@ -1,5 +1,6 @@
 use crate::core::parse::parse_datasource;
 
+use crate::core::parse::parse_mpsc_from_schema;
 use std::path::PathBuf;
 
 use crate::core::error::{Error, IoError};
@@ -24,6 +25,7 @@ pub mod task;
 pub mod util;
 #[macro_use]
 extern crate lazy_static;
+pub type Json = serde_json::Value;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
@@ -43,12 +45,11 @@ async fn main() -> Result<()> {
 }
 
 pub fn create_context(
-    concurrency: usize,
     limit: Option<usize>,
     skip: bool,
     schema: Schema,
 ) -> DataSourceContext {
-    return DataSourceContext::new(concurrency, limit, skip, schema);
+    return DataSourceContext::new(limit, skip, schema);
 }
 
 /// 创建代理输出任务
@@ -64,8 +65,6 @@ pub async fn create_delegate_output(cli: Cli) -> Result<(DelegatedDataSource, Da
     unsafe {
         STATICS_LOGGER.as_mut().unwrap().interval(interval);
     }
-
-    let datasources = parse_mspc_datasource(datasources);
 
     let datasource = DelegatedDataSource::new(datasources);
 

@@ -56,7 +56,7 @@ impl super::DataSourceChannel for FakeDataSource {
     }
 
     fn channel_schema(&self) -> Option<ChannelSchema> {
-        return None;
+        return Some(ChannelSchema { batch: self.args.batch, concurrency: self.args.concurrency, count: usize::MAX });
     }
 
     fn columns(&self) -> Option<&Vec<DataSourceColumn>> {

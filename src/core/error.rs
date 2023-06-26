@@ -36,6 +36,9 @@ pub enum IoError {
 
     #[error("unkown data type:`{0}`")]
     UnkownTypeError(String),
+
+    #[error("unkown source type:`{0}`")]
+    UnkownSourceError(String),
 }
 
 

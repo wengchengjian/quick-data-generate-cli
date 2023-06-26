@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use super::{Close, Output, OutputEnum};
+use super::{Close, DataSourceChannel, DataSourceEnum, ChannelContext};
 use crate::{
     core::{
         cli::Cli,
@@ -15,8 +15,7 @@ use crate::{
         shutdown::Shutdown,
     },
     model::{
-        column::OutputColumn,
-        schema::{ChannelSchema, OutputSchema},
+        schema::{ChannelSchema, DataSourceSchema}, column::DataSourceColumn,
     },
     task::{kafka::KafkaTask, Task},
 };
@@ -33,11 +32,13 @@ use tokio::{
 };
 
 #[derive(Debug)]
-pub struct KafkaOutput {
+pub struct KafkaDataSource {
     pub name: String,
     pub args: KafkaArgs,
     pub shutdown: AtomicBool,
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
+    pub sources: Vec<String>,
+    
 }
 
 #[derive(Debug)]
@@ -76,7 +77,7 @@ impl KafkaArgs {
 
 pub static DEFAULT_GROUP: &'static str = "vFBiQ6aasB";
 
-impl KafkaOutput {
+impl KafkaDataSource {
     pub fn get_provider(&self) -> Result<FutureProducer> {
         let host = format!("{}:{}", self.args.host, self.args.port);
         return ClientConfig::new()
@@ -97,7 +98,7 @@ impl KafkaOutput {
     /// 尝试获取字段定义
     pub async fn get_columns_define(
         consumer: StreamConsumer<DefaultConsumerContext>,
-    ) -> Vec<OutputColumn> {
+    ) -> Vec<DataSourceColumn> {
         match timeout(Duration::from_secs(5), consumer.recv()).await {
             Ok(result) => match result {
                 Ok(message) => {
@@ -112,7 +113,7 @@ impl KafkaOutput {
                     }
                     let val: serde_json::Value = serde_json::from_str(payload).unwrap();
 
-                    let columns = OutputColumn::get_columns_from_value(&val);
+                    let columns = DataSourceColumn::get_columns_from_value(&val);
                     consumer
                         .commit_message(&message, CommitMode::Async)
                         .unwrap();
@@ -147,12 +148,13 @@ impl KafkaOutput {
         return Ok(consumer);
     }
 
-    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn Output>> {
-        let res = KafkaOutput {
+    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
+        let res = KafkaDataSource {
             name: "kafka".into(),
             args: cli.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
+            sources: vec!["fake_data_source".to_owned()],
         };
 
         Ok(Box::new(res))
@@ -160,13 +162,17 @@ impl KafkaOutput {
 }
 
 #[async_trait]
-impl Output for KafkaOutput {
-    fn columns_mut(&mut self, columns: Vec<OutputColumn>) {
+impl DataSourceChannel for KafkaDataSource {
+    fn sources(&self) -> Option<&Vec<String>> {
+        return Some(&self.sources);
+    }
+    
+    fn columns_mut(&mut self, columns: Vec<DataSourceColumn>) {
         self.columns = columns;
     }
 
-    fn output_type(&self) -> Option<OutputEnum> {
-        return Some(OutputEnum::Kafka);
+    fn source_type(&self) -> Option<DataSourceEnum> {
+        return Some(DataSourceEnum::Kafka);
     }
 
     fn batch(&self) -> Option<usize> {
@@ -189,7 +195,7 @@ impl Output for KafkaOutput {
         });
     }
 
-    fn columns(&self) -> Option<&Vec<OutputColumn>> {
+    fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
         return Some(&self.columns);
     }
 
@@ -201,13 +207,13 @@ impl Output for KafkaOutput {
         return &self.name;
     }
 
-    async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
+    async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
         let topic = self.args.topic.as_str();
         let ref topics = vec![topic];
         match self.get_consumer(DEFAULT_GROUP.to_string(), topics) {
             Ok(consumer) => {
                 // 获取字段定义
-                let columns = KafkaOutput::get_columns_define(consumer).await;
+                let columns = KafkaDataSource::get_columns_define(consumer).await;
                 return Some(columns);
             }
             Err(_) => {
@@ -216,9 +222,9 @@ impl Output for KafkaOutput {
         }
     }
 
-    fn get_output_task(
-        &mut self,
-        columns: Vec<OutputColumn>,
+    fn get_task(
+        &mut self, _channel: ChannelContext,
+        columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
@@ -250,15 +256,16 @@ impl Output for KafkaOutput {
     }
 }
 
-impl TryFrom<Cli> for Box<KafkaOutput> {
+impl TryFrom<Cli> for Box<KafkaDataSource> {
     type Error = Box<dyn std::error::Error>;
 
     fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
-        let res = KafkaOutput {
+        let res = KafkaDataSource {
             name: "kafka".into(),
             args: value.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
+            sources: vec!["fake_data_source".to_owned()],
         };
 
         Ok(Box::new(res))
@@ -282,21 +289,23 @@ impl TryInto<KafkaArgs> for Cli {
     }
 }
 
-impl TryFrom<OutputSchema> for KafkaOutput {
+impl TryFrom<DataSourceSchema> for KafkaDataSource {
     type Error = Error;
 
-    fn try_from(value: OutputSchema) -> std::result::Result<Self, Self::Error> {
-        Ok(KafkaOutput {
-            name: "默认kafka输出".to_string(),
+    fn try_from(value: DataSourceSchema) -> std::result::Result<Self, Self::Error> {
+        Ok(KafkaDataSource {
+            name: value.name,
             args: KafkaArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
-            columns: OutputColumn::get_columns_from_schema(&value.columns),
+            columns: DataSourceColumn::get_columns_from_schema(&value.columns),
+            sources: value.sources,
+            
         })
     }
 }
 
 #[async_trait]
-impl Close for KafkaOutput {
+impl Close for KafkaDataSource {
     async fn close(&mut self) -> Result<()> {
         Ok(())
     }

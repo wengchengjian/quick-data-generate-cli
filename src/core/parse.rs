@@ -3,15 +3,14 @@ use super::{
     cli::Cli,
     error::{Error, Result},
 };
-use std::{collections::HashMap, path::PathBuf};
+use std::{path::PathBuf};
 
 use crate::{
     create_context, impl_func_is_primitive_by_parse,
     model::{
         column::{DataTypeEnum, FixedValue},
-        schema::{OutputSchema, Schema},
-    },
-    output::{self, csv::CsvOutput, kafka::KafkaOutput, mysql::MysqlOutput, Output, OutputContext},
+        schema::{Schema, DataSourceSchema},
+    }, datasource::{DataSourceChannel, DataSourceContext, DataSourceEnum, mysql::MysqlDataSource, kafka::KafkaDataSource, csv::CsvDataSource, fake::FakeDataSource},
 };
 
 impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
@@ -23,46 +22,40 @@ pub fn parse_schema(path: &PathBuf) -> Result<Schema> {
     Ok(schema)
 }
 
-pub fn parse_output_from_schema(
-    name: String,
-    schema: OutputSchema,
-) -> Result<Box<dyn output::Output>> {
-    match schema.output {
-        output::OutputEnum::Mysql => {
-            let mut output = MysqlOutput::try_from(schema)?;
-            output.name = name;
-            Ok(Box::new(output))
-        }
-        output::OutputEnum::Kafka => {
-            let mut output = KafkaOutput::try_from(schema)?;
-            output.name = name;
-            Ok(Box::new(output))
-        }
-        output::OutputEnum::Csv => {
-            let mut output = CsvOutput::try_from(schema)?;
-            output.name = name;
-            Ok(Box::new(output))
-        }
+pub fn parse_datasource_from_schema(
+    schema: DataSourceSchema,
+    ) -> Result<Box<dyn DataSourceChannel>> {
+    match schema.source {
+        DataSourceEnum::Mysql => Ok(Box::new(MysqlDataSource::try_from(schema)?)),
+        DataSourceEnum::Kafka => Ok(Box::new(KafkaDataSource::try_from(schema)?)),
+        DataSourceEnum::Csv => Ok(Box::new(CsvDataSource::try_from(schema)?)),
+        DataSourceEnum::Fake => Ok(Box::new(FakeDataSource::new(schema.channel.batch, schema.channel.concurrency))),
     }
 }
 
-pub fn parse_outputs_from_schema(schema: Schema) -> Result<Vec<Box<dyn output::Output>>> {
+/// 返回MpscDataSourceChannel 数据源
+pub fn parse_mspc_datasource(datasources: Vec<Box<dyn DataSourceChannel>>) {
+
+}
+
+pub fn parse_datasources_from_schema(schema: Schema) -> Result<Vec<Box<dyn DataSourceChannel>>> {
     let mut outputs = vec![];
 
-    for (key, value) in schema.outputs {
-        outputs.push(parse_output_from_schema(key, value)?);
+    for source in schema.sources {
+        outputs.push(parse_datasource_from_schema(source)?);
     }
     Ok(outputs)
 }
 
-pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
-    let output_enum = cli.output;
-    match output_enum {
-        Some(output) => match output {
-            output::OutputEnum::Kafka => return KafkaOutput::from_cli(cli).ok(),
+pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn DataSourceChannel>> {
+    let source_enum = cli.source;
+    match source_enum {
+        Some(source) => match source {
+            DataSourceEnum::Kafka => return KafkaDataSource::from_cli(cli).ok(),
 
-            output::OutputEnum::Mysql => return MysqlOutput::from_cli(cli).ok(),
-            output::OutputEnum::Csv => return CsvOutput::from_cli(cli).ok(),
+            DataSourceEnum::Mysql => return MysqlDataSource::from_cli(cli).ok(),
+            DataSourceEnum::Csv => return CsvDataSource::from_cli(cli).ok(),
+            DataSourceEnum::Fake => return None,
         },
         None => {
             return None;
@@ -70,12 +63,12 @@ pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn output::Output>> {
     };
 }
 
-pub fn parse_schema_from_outputs(outputs: &Vec<Box<dyn Output>>) -> HashMap<String, OutputSchema> {
-    let mut res = HashMap::new();
+pub fn parse_schema_from_datasources(datasources: &Vec<Box<dyn DataSourceChannel>>) -> Vec<DataSourceSchema> {
+    let mut res = vec![];
 
-    for output in outputs {
-        match output.transfer_to_schema() {
-            Some(schema) => res.insert(output.name().to_owned(), schema),
+    for datasource in datasources {
+        match datasource.transfer_to_schema() {
+            Some(schema) => res.push(schema),
             None => continue,
         };
     }
@@ -84,26 +77,26 @@ pub fn parse_schema_from_outputs(outputs: &Vec<Box<dyn Output>>) -> HashMap<Stri
 }
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
-pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, OutputContext)> {
+pub fn parse_datasource(cli: Cli) -> Result<(Vec<Box<dyn DataSourceChannel>>, usize, DataSourceContext)> {
     let mut cli = cli;
-    let mut outputs = vec![];
+    let mut datasources = vec![];
     let interval = cli.interval;
     let mut concurrency = cli.concurrency;
 
-    // let _ = cli.output.insert(output::OutputEnum::Mysql);
+     let _ = cli.source.insert(DataSourceEnum::Mysql);
     // let _ = cli.topic.insert("FileHttpLogPushService".to_string());
-    // cli.host = "192.168.180.217".to_owned();
-    // let _ = cli.user.insert("root".to_string());
-    // let _ = cli.database.insert("tests".to_string());
-    // let _ = cli.table.insert("bfc_model_task".to_string());
-    // let _ = cli.password.insert("bfcdb@123".to_string());
-    // let _ = cli.batch.insert(1000);
-    // let _ = cli.count.insert(50000);
+     cli.host = "192.168.180.217".to_owned();
+     let _ = cli.user.insert("root".to_string());
+     let _ = cli.database.insert("tests".to_string());
+     let _ = cli.table.insert("bfc_model_task".to_string());
+     let _ = cli.password.insert("bfcdb@123".to_string());
+     let _ = cli.batch.insert(1000);
+     let _ = cli.count.insert(50000);
     let _ = cli.concurrency.insert(1);
     // let _ = cli.interval.insert(1);
-    let _ = cli.schema.insert(PathBuf::from(
-        "C:\\Users\\Administrator\\23383409-6532-437b-af7e-ee9cd4b87127.json",
-    ));
+//    let _ = cli.schema.insert(PathBuf::from(
+//        "C:\\Users\\Administrator\\23383409-6532-437b-af7e-ee9cd4b87127.json",
+//    ));
 
     if let Some(schema_path) = &cli.schema {
         let schema = parse_schema(schema_path).unwrap();
@@ -114,27 +107,21 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, Ou
             }
         }
 
-        if let Some(schema_concurrency) = schema.concurrency {
-            if let None = concurrency {
-                let _ = cli.concurrency.insert(schema_concurrency);
-            }
-        }
+        let mut schema_datasources = parse_datasources_from_schema(schema)?;
 
-        let mut schema_outputs = parse_outputs_from_schema(schema)?;
-
-        outputs.append(&mut schema_outputs);
+        datasources.append(&mut schema_datasources);
     }
     let limit = cli.limit;
     let skip = cli.skip;
 
     if let Some(output) = parse_output_from_cli(cli) {
-        outputs.push(output);
+        datasources.push(output);
     }
     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
 
     concurrency = concurrency.and_then(|concurrency| {
-        if concurrency < outputs.len() {
-            Some(outputs.len())
+        if concurrency < datasources.len() {
+            Some(datasources.len())
         } else {
             Some(concurrency)
         }
@@ -144,13 +131,11 @@ pub fn parse_output(cli: Cli) -> Result<(Vec<Box<dyn output::Output>>, usize, Ou
 
     let schema = Schema::new(
         Some(interval),
-        Some(concurrency),
-        parse_schema_from_outputs(&outputs),
+        parse_schema_from_datasources(&datasources),
     );
-
     let context = create_context(concurrency, limit, skip, schema);
 
-    return Ok((outputs, interval, context));
+    return Ok((datasources, interval, context));
 }
 
 use super::check::*;
@@ -277,11 +262,11 @@ mod tests {
 
         let schema = parse_schema(&path_buf).expect("解析schema文件失败");
 
-        let outputs = parse_outputs_from_schema(schema);
+        let datasources = parse_datasources_from_schema(schema);
 
-        match outputs {
-            Ok(outputs) => {
-                println!("parse outputs struct:{:#?}", outputs);
+        match datasources {
+            Ok(datasource) => {
+                println!("parse datasources struct:{:#?}", datasource);
             }
             Err(e) => panic!("read schema file error:{e}"),
         }

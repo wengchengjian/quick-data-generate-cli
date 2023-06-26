@@ -7,8 +7,8 @@ use tokio::sync::{mpsc, Mutex};
 use crate::{
     core::{limit::token::TokenBuketLimiter, shutdown::Shutdown},
     exec::{kafka::KafkaTaskExecutor, Exector},
-    model::column::OutputColumn,
-    output::{kafka::KafkaArgs, Close},
+    model::column::{ DataSourceColumn}
+, datasource::{kafka::KafkaArgs, Close},
 };
 
 use super::Task;
@@ -19,7 +19,7 @@ pub struct KafkaTask {
     pub count: usize,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
     pub executor: KafkaTaskExecutor,
 }
 #[async_trait]
@@ -46,7 +46,7 @@ impl KafkaTask {
         name: String,
         args: &KafkaArgs,
         producer: FutureProducer,
-        columns: Vec<OutputColumn>,
+        columns: Vec<DataSourceColumn>,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,

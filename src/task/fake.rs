@@ -1,33 +1,30 @@
-use std::sync::{atomic::AtomicI64, Arc};
+
 
 use async_trait::async_trait;
-use mysql_async::Pool;
 
-use tokio::sync::{mpsc, Mutex};
+
+use tokio::sync::{mpsc};
 
 use crate::{
-    core::{limit::token::TokenBuketLimiter, shutdown::Shutdown},
-    exec::{mysql::MysqlTaskExecutor, Exector},
+    core::{shutdown::Shutdown},
+    exec::{Exector, fake::FakeTaskExecutor},
     model::column::{ DataSourceColumn}
-    , datasource::{mysql::MysqlArgs, Close, ChannelContext},
+    , datasource::{Close, ChannelContext, fake::FakeArgs},
 };
 
 use super::Task;
 
 #[derive(Debug)]
-pub struct MysqlTask {
+pub struct FakeTask {
     pub name: String,
-    pub database: String,
-    pub table: String,
     pub batch: usize,
-    pub count: usize,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
     pub columns: Vec<DataSourceColumn>,
-    pub executor: MysqlTaskExecutor,
+    pub executor: FakeTaskExecutor,
 }
 #[async_trait]
-impl Close for MysqlTask {
+impl Close for FakeTask {
     async fn close(&mut self) -> crate::Result<()> {
         // 判断任务是否完成
         Ok(())
@@ -35,7 +32,7 @@ impl Close for MysqlTask {
 }
 
 #[async_trait]
-impl Task for MysqlTask {
+impl Task for FakeTask {
     fn shutdown(&mut self) -> &mut Shutdown {
         return &mut self.shutdown;
     }
@@ -45,33 +42,25 @@ impl Task for MysqlTask {
     }
 }
 
-impl MysqlTask {
+impl FakeTask {
     pub fn from_args(
         name: String,
-        args: &MysqlArgs,
-        pool: Pool,
+        args: &FakeArgs,
         columns: Vec<DataSourceColumn>,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
-        limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
-        count_rc: Option<Arc<AtomicI64>>,
         channel: ChannelContext,
-    ) -> Self {
-        let data2 = args.database.clone();
-        let table2: String = args.table.clone();
+        ) -> Self {
         let columns2 = columns.clone();
         let name2 = name.clone();
         Self {
             name,
-            database: args.database.clone(),
-            table: args.table.clone(),
             batch: args.batch,
-            count: args.count,
             shutdown_sender,
             shutdown,
             columns,
-            executor: MysqlTaskExecutor::new(
-                pool, args.batch, count_rc, data2, table2, columns2, name2, limiter, channel.receiver,channel.sender, 
+            executor: FakeTaskExecutor::new(
+                args.batch,  columns2, name2, channel.sender, 
             ),
         }
     }

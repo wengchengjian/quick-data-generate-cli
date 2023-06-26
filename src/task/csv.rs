@@ -6,8 +6,8 @@ use tokio::sync::{mpsc, Mutex};
 use crate::{
     core::{limit::token::TokenBuketLimiter, shutdown::Shutdown},
     exec::{csv::CsvTaskExecutor, Exector},
-    model::column::OutputColumn,
-    output::{csv::CsvArgs, Close},
+    model::column::{DataSourceColumn},
+ datasource::{csv::CsvArgs, Close},
 };
 
 use super::Task;
@@ -19,7 +19,7 @@ pub struct CsvTask {
     pub count: usize,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
     pub executor: CsvTaskExecutor,
 }
 #[async_trait]
@@ -45,7 +45,7 @@ impl CsvTask {
     pub fn from_args(
         name: String,
         args: &CsvArgs,
-        columns: Vec<OutputColumn>,
+        columns: Vec<DataSourceColumn>,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,

@@ -1,25 +1,25 @@
-use std::collections::HashMap;
+
 
 use serde::{Deserialize, Serialize};
 
-use crate::datasource::{SourceEnum, DataSourceEnum};
+use crate::datasource::{DataSourceEnum};
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Schema {
     pub interval: Option<usize>,
 
-    pub outputs: Vec<DataSourceSchema>,
+    pub sources: Vec<DataSourceSchema>,
 }
 
 impl Schema {
     pub fn new(
         interval: Option<usize>,
-        outputs: Vec<DataSourceSchema>,
+        sources: Vec<DataSourceSchema>,
     ) -> Self {
         Self {
             interval,
-            outputs,
+            sources,
         }
     }
 }

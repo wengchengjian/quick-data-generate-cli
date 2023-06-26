@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-use crate::output::OutputEnum;
+use crate::datasource::DataSourceEnum;
+
 
 #[derive(Debug, StructOpt, Clone)]
 #[structopt(
@@ -60,7 +61,7 @@ pub struct Cli {
 
     /// 输出源， 支持kafka, mysql, clickhouse
     #[structopt(short, long)]
-    pub output: Option<OutputEnum>,
+    pub source: Option<DataSourceEnum>,
 
     /// 限流输出速度, 针对每一个输出源
     #[structopt(short, long)]

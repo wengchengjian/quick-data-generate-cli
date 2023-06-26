@@ -12,12 +12,12 @@ use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::shutdown::Shutdown;
-use crate::model::column::{DataTypeEnum, OutputColumn};
-use crate::model::schema::{ChannelSchema, OutputSchema};
+use crate::model::column::{DataTypeEnum, DataSourceColumn, };
+use crate::model::schema::{ChannelSchema, DataSourceSchema, };
 use crate::task::mysql::MysqlTask;
 use crate::task::Task;
 
-impl MysqlOutput {
+impl MysqlDataSource {
     pub fn connect(&mut self) -> Result<Pool> {
         //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
@@ -39,7 +39,7 @@ impl MysqlOutput {
         conn: Conn,
         database: &str,
         table: &str,
-    ) -> Result<Vec<OutputColumn>> {
+    ) -> Result<Vec<DataSourceColumn>> {
         let sql = format!("desc {}.{}", database, table);
         let mut conn = conn;
         let res = sql
@@ -68,7 +68,7 @@ impl MysqlOutput {
                     extra,
                 };
 
-                return OutputColumn {
+                return DataSourceColumn {
                     name: column.field.clone(),
                     data_type: DataTypeEnum::from_string(column.cype.clone()).unwrap(),
                 };
@@ -78,13 +78,15 @@ impl MysqlOutput {
         Ok(res)
     }
 
-    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn Output>> {
-        let res = MysqlOutput {
+    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
+        let res = MysqlDataSource {
             name: "mysql".into(),
             args: cli.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
             pool_cache: HashMap::new(),
+            sources: vec!["fake_data_source".to_owned()],
+            
         };
 
         Ok(Box::new(res))
@@ -164,16 +166,17 @@ impl TryInto<MysqlArgs> for Cli {
     }
 }
 
-impl TryFrom<OutputSchema> for MysqlOutput {
+impl TryFrom<DataSourceSchema> for MysqlDataSource {
     type Error = Error;
 
-    fn try_from(value: OutputSchema) -> std::result::Result<Self, Self::Error> {
-        Ok(MysqlOutput {
-            name: "默认mysql输出".to_string(),
+    fn try_from(value: DataSourceSchema) -> std::result::Result<Self, Self::Error> {
+        Ok(MysqlDataSource {
+            name: value.name,
             args: MysqlArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
-            columns: OutputColumn::get_columns_from_schema(&value.columns),
+            columns: DataSourceColumn::get_columns_from_schema(&value.columns),
             pool_cache: HashMap::new(),
+            sources: value.sources,
         })
     }
 }
@@ -181,13 +184,17 @@ impl TryFrom<OutputSchema> for MysqlOutput {
 use async_trait::async_trait;
 
 #[async_trait]
-impl super::Output for MysqlOutput {
-    fn columns_mut(&mut self, columns: Vec<OutputColumn>) {
+impl super::DataSourceChannel for MysqlDataSource {
+    fn sources(&self) -> Option<&Vec<String>> {
+        return Some(&self.sources);
+    }
+    
+    fn columns_mut(&mut self, columns: Vec<DataSourceColumn>) {
         self.columns = columns;
     }
 
-    fn output_type(&self) -> Option<OutputEnum> {
-        return Some(OutputEnum::Mysql);
+    fn source_type(&self) -> Option<DataSourceEnum> {
+        return Some(DataSourceEnum::Mysql);
     }
 
     fn batch(&self) -> Option<usize> {
@@ -213,7 +220,7 @@ impl super::Output for MysqlOutput {
         });
     }
 
-    fn columns(&self) -> Option<&Vec<OutputColumn>> {
+    fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
         return Some(&self.columns);
     }
 
@@ -231,28 +238,35 @@ impl super::Output for MysqlOutput {
             x => Some(x),
         }
     }
-    async fn after_run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
+    
+    async fn before_run(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
+        // TODO 可以在这里建表之类的
+        Ok(())
+    }
+    
+    async fn after_run(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
         for pool in self.pool_cache.values() {
             let _ = pool.to_owned().disconnect().await;
         }
         Ok(())
     }
-    async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
+    async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
         // 获取连接池
         let pool = self.connect().expect("获取mysql连接失败!");
 
         let conn = pool.get_conn().await.expect("获取mysql连接失败!");
         // 获取字段定义
-        let columns = MysqlOutput::get_columns_define(conn, &self.args.database, &self.args.table)
+        let columns = MysqlDataSource::get_columns_define(conn, &self.args.database, &self.args.table)
             .await
             .expect("获取字段定义失败");
 
         return Some(columns);
     }
 
-    fn get_output_task(
+    fn get_task(
         &mut self,
-        columns: Vec<OutputColumn>,
+        channel: ChannelContext,
+        columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
@@ -270,6 +284,7 @@ impl super::Output for MysqlOutput {
             shutdown,
             limiter,
             count_rc,
+        channel
         );
         return Some(Box::new(task));
     }
@@ -280,7 +295,7 @@ impl super::Output for MysqlOutput {
 }
 
 #[async_trait]
-impl Close for MysqlOutput {
+impl Close for MysqlDataSource {
     async fn close(&mut self) -> Result<()> {
         self.shutdown.store(true, Ordering::SeqCst);
         Ok(())
@@ -308,31 +323,34 @@ pub struct MysqlArgs {
     pub concurrency: usize,
 }
 
-use super::{Close, Output, OutputContext, OutputEnum};
+use super::{Close, DataSourceChannel,DataSourceEnum, DataSourceContext, ChannelContext};
 
 #[derive(Debug)]
-pub struct MysqlOutput {
+pub struct MysqlDataSource {
     pub name: String,
 
     pub args: MysqlArgs,
 
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
 
     pub shutdown: AtomicBool,
 
     pub pool_cache: HashMap<String, Pool>,
+    
+    pub sources: Vec<String>,
 }
 
-impl TryFrom<Cli> for Box<MysqlOutput> {
+impl TryFrom<Cli> for Box<MysqlDataSource> {
     type Error = Box<dyn std::error::Error>;
 
     fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
-        let res = MysqlOutput {
+        let res = MysqlDataSource {
             name: "mysql".into(),
             args: value.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
             pool_cache: HashMap::new(),
+            sources: vec!["fake_data_source".to_owned()],
         };
 
         Ok(Box::new(res))

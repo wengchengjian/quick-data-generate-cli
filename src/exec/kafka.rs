@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     core::{fake::get_random_string, limit::token::TokenBuketLimiter},
-    model::column::OutputColumn,
+    model::column::DataSourceColumn,
 };
 
 use super::Exector;
@@ -18,7 +18,7 @@ use super::Exector;
 pub struct KafkaTaskExecutor {
     pub batch: usize,
     pub count: Option<Arc<AtomicI64>>,
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
     pub task_name: String,
     pub limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     pub producer: FutureProducer,
@@ -29,7 +29,7 @@ impl Exector for KafkaTaskExecutor {
     fn batch(&self) -> usize {
         return self.batch;
     }
-    fn columns(&self) -> &Vec<OutputColumn> {
+    fn columns(&self) -> &Vec<DataSourceColumn> {
         return &self.columns;
     }
 

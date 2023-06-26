@@ -3,13 +3,13 @@ use crate::core::error::{Error, IoError, Result};
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::log::register;
 use crate::core::shutdown::Shutdown;
-use crate::model::column::{DataTypeEnum, OutputColumn};
-use crate::model::schema::{ChannelSchema, OutputSchema};
+use crate::model::column::{DataSourceColumn};
+use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::csv::CsvTask;
 use crate::task::Task;
 use bytes::Buf;
 use serde_json::json;
-use std::collections::HashMap;
+
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -17,18 +17,19 @@ use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use std::vec;
 use tokio::fs::File;
-use tokio::io::AsyncBufReadExt;
+
 use tokio::io::AsyncWriteExt;
-use tokio::io::{BufReader, BufWriter};
+use tokio::io::{BufWriter};
 use tokio::sync::{mpsc, Mutex};
 
-impl CsvOutput {
-    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn Output>> {
-        let res = CsvOutput {
+impl CsvDataSource {
+    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
+        let res = CsvDataSource {
             name: "Csv".into(),
             args: cli.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
+            sources: vec!["fake_data_source".to_owned()],
         };
 
         Ok(Box::new(res))
@@ -83,15 +84,17 @@ impl TryInto<CsvArgs> for Cli {
     }
 }
 
-impl TryFrom<OutputSchema> for CsvOutput {
+impl TryFrom<DataSourceSchema> for CsvDataSource {
     type Error = Error;
 
-    fn try_from(value: OutputSchema) -> std::result::Result<Self, Self::Error> {
-        Ok(CsvOutput {
-            name: "默认Csv输出".to_string(),
+    fn try_from(value: DataSourceSchema) -> std::result::Result<Self, Self::Error> {
+        Ok(CsvDataSource {
+            name: value.name,
             args: CsvArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
-            columns: OutputColumn::get_columns_from_schema(&value.columns),
+            columns: DataSourceColumn::get_columns_from_schema(&value.columns),
+            sources: value.sources,
+            
         })
     }
 }
@@ -99,8 +102,12 @@ impl TryFrom<OutputSchema> for CsvOutput {
 use async_trait::async_trait;
 
 #[async_trait]
-impl super::Output for CsvOutput {
-    async fn before_run(&mut self, _context: &mut OutputContext) -> crate::Result<()> {
+impl super::DataSourceChannel for CsvDataSource {
+    fn sources(&self) -> Option<&Vec<String>> {
+        return Some(&self.sources);
+    }
+    
+    async fn before_run(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
         //注册日志
         register(&self.name().clone()).await;
         // 创建csv文件
@@ -128,12 +135,12 @@ impl super::Output for CsvOutput {
         Ok(())
     }
 
-    fn columns_mut(&mut self, columns: Vec<OutputColumn>) {
+    fn columns_mut(&mut self, columns: Vec<DataSourceColumn>) {
         self.columns = columns;
     }
 
-    fn output_type(&self) -> Option<OutputEnum> {
-        return Some(OutputEnum::Csv);
+    fn source_type(&self) -> Option<DataSourceEnum> {
+        return Some(DataSourceEnum::Csv);
     }
 
     fn batch(&self) -> Option<usize> {
@@ -154,7 +161,7 @@ impl super::Output for CsvOutput {
         });
     }
 
-    fn columns(&self) -> Option<&Vec<OutputColumn>> {
+    fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
         return Some(&self.columns);
     }
 
@@ -173,13 +180,13 @@ impl super::Output for CsvOutput {
         }
     }
 
-    async fn get_columns_define(&mut self) -> Option<Vec<OutputColumn>> {
+    async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
         return None;
     }
 
-    fn get_output_task(
-        &mut self,
-        columns: Vec<OutputColumn>,
+    fn get_task(
+        &mut self, _channel: ChannelContext,
+        columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
@@ -203,7 +210,7 @@ impl super::Output for CsvOutput {
 }
 
 #[async_trait]
-impl Close for CsvOutput {
+impl Close for CsvDataSource {
     async fn close(&mut self) -> Result<()> {
         self.shutdown.store(true, Ordering::SeqCst);
         Ok(())
@@ -221,28 +228,31 @@ pub struct CsvArgs {
     pub concurrency: usize,
 }
 
-use super::{Close, Output, OutputContext, OutputEnum};
+use super::{Close,DataSourceContext, DataSourceEnum, DataSourceChannel, ChannelContext};
 
 #[derive(Debug)]
-pub struct CsvOutput {
+pub struct CsvDataSource {
     pub name: String,
 
     pub args: CsvArgs,
 
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
 
     pub shutdown: AtomicBool,
+    
+    pub sources: Vec<String>,
 }
 
-impl TryFrom<Cli> for Box<CsvOutput> {
+impl TryFrom<Cli> for Box<CsvDataSource> {
     type Error = Box<dyn std::error::Error>;
 
     fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
-        let res = CsvOutput {
+        let res = CsvDataSource {
             name: "Csv".into(),
             args: value.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
+            sources: vec![]
         };
 
         Ok(Box::new(res))

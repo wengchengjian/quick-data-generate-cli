@@ -9,14 +9,12 @@ use crate::{
     core::{
         error::{Error, IoError},
         limit::token::TokenBuketLimiter,
-        watch::StopWatch,
     },
-    model::column::OutputColumn,
+    model::column::DataSourceColumn,
 };
 use async_trait::async_trait;
 use bytes::Buf;
 use tokio::{
-    fs::File,
     io::{AsyncBufReadExt, BufReader, BufWriter},
     sync::Mutex,
 };
@@ -28,7 +26,7 @@ pub struct CsvTaskExecutor {
     pub batch: usize,
     pub limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     pub count: Option<Arc<AtomicI64>>,
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
     pub task_name: String,
 }
 
@@ -37,7 +35,7 @@ impl CsvTaskExecutor {
         filename: String,
         batch: usize,
         count: Option<Arc<AtomicI64>>,
-        columns: Vec<OutputColumn>,
+        columns: Vec<DataSourceColumn>,
         task_name: String,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Self {
@@ -82,7 +80,7 @@ impl Exector for CsvTaskExecutor {
     fn batch(&self) -> usize {
         return self.batch;
     }
-    fn columns(&self) -> &Vec<OutputColumn> {
+    fn columns(&self) -> &Vec<DataSourceColumn> {
         return &self.columns;
     }
 

@@ -1,5 +1,6 @@
 use rdkafka::error::KafkaError;
 use thiserror::Error;
+use tokio::sync::mpsc;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -37,6 +38,13 @@ pub enum IoError {
     UnkownTypeError(String),
 }
 
+
+impl From<mysql_async::Error> for Error {
+    fn from(value: mysql_async::Error) -> Self {
+        Error::Other(Box::new(value))
+    }
+}
+
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
         Error::Io(IoError::ParseJsonError(e))
@@ -63,6 +71,14 @@ impl From<std::io::Error> for Error {
 
 impl From<KafkaError> for Error {
     fn from(value: KafkaError) -> Self {
+        match value {
+            _ => Error::Other(Box::new(value)),
+        }
+    }
+}
+
+impl From<mpsc::error::SendError<serde_json::Value>> for Error {
+    fn from(value: mpsc::error::SendError<serde_json::Value>) -> Self {
         match value {
             _ => Error::Other(Box::new(value)),
         }

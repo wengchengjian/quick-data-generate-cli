@@ -1,12 +1,12 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
-use mysql_async::{prelude::Query, Pool};
-use tokio::sync::Mutex;
+use mysql_async::{prelude::{Query, WithParams}, Pool};
+use tokio::sync::{Mutex, mpsc::{Receiver, Sender}};
 
 use crate::{
-    core::{error::Error, limit::token::TokenBuketLimiter, watch::StopWatch},
-    model::column::OutputColumn,
+    core::{error::Error, limit::token::TokenBuketLimiter},
+    model::column::DataSourceColumn,
 };
 
 use super::Exector;
@@ -19,8 +19,11 @@ pub struct MysqlTaskExecutor {
     pub batch: usize,
     pub limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     pub count: Option<Arc<AtomicI64>>,
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
     pub task_name: String,
+    pub receiver: Option<Arc<Mutex<Receiver<serde_json::Value>>>>,
+    pub sender: Option<Sender<serde_json::Value>>,
+    pub next: usize
 }
 
 impl MysqlTaskExecutor {
@@ -30,9 +33,11 @@ impl MysqlTaskExecutor {
         count: Option<Arc<AtomicI64>>,
         database: String,
         table: String,
-        columns: Vec<OutputColumn>,
+        columns: Vec<DataSourceColumn>,
         task_name: String,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
+        receiver: Option<Arc<Mutex<Receiver<serde_json::Value>>>>,
+        sender: Option<Sender<serde_json::Value>>
     ) -> Self {
         Self {
             pool,
@@ -43,6 +48,9 @@ impl MysqlTaskExecutor {
             table,
             task_name,
             limiter,
+            receiver,
+            sender,
+            next: 0
         }
     }
     pub fn get_columns_name(&self) -> (String, String) {
@@ -75,10 +83,11 @@ impl MysqlTaskExecutor {
 
 #[async_trait]
 impl Exector for MysqlTaskExecutor {
+
     fn batch(&self) -> usize {
         return self.batch;
     }
-    fn columns(&self) -> &Vec<OutputColumn> {
+    fn columns(&self) -> &Vec<DataSourceColumn> {
         return &self.columns;
     }
 
@@ -96,6 +105,31 @@ impl Exector for MysqlTaskExecutor {
 
     fn is_multi_handle(&self) -> bool {
         return true;
+    }
+
+    fn receiver(&mut self) -> Option<&mut Arc<Mutex<Receiver<serde_json::Value>>>> {
+        return self.receiver.as_mut();
+    }
+
+    fn sender(&mut self) -> Option<&mut Sender<serde_json::Value>> {
+        return self.sender.as_mut();
+    }
+
+    async fn handle_fetch(&mut self) -> crate::Result<Vec<serde_json::Value>> {
+
+        let query_sql = format!("select * from {}.{} limit {}, {}", self.database, self.table, self.next, self.batch);
+
+        match self.pool.get_conn().await {
+            Ok(mut conn) => {
+                let data = query_sql.with(()).fetch(&mut conn).await?;
+                // 更新next
+                self.next = self.next + self.batch;
+                return Ok(data);
+            }
+            Err(e) => {
+                return Err(Error::Other(Box::new(e)));
+            }
+        };
     }
 
     async fn handle_batch(&mut self, vals: Vec<serde_json::Value>) -> crate::Result<()> {

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+
 use std::ops::Range;
 
-use chrono::{Local, NaiveDateTime};
+
 use fake::faker::address::raw::*;
 use fake::faker::internet::raw::*;
 use fake::faker::job::raw::Title;
@@ -12,7 +12,7 @@ use fake::faker::time::raw::*;
 use fake::locales::*;
 use fake::uuid::UUIDv4;
 use fake::{Fake, Faker};
-use mysql_async::Params;
+
 use rand::{thread_rng, Rng};
 use serde_json::json;
 
@@ -301,7 +301,7 @@ use time::format_description::FormatItem;
 use time::macros::{datetime, format_description};
 use time::OffsetDateTime;
 
-use crate::model::column::{DataTypeEnum, FixedValue, OutputColumn};
+use crate::model::column::{DataTypeEnum, FixedValue, DataSourceColumn};
 use crate::{impl_block_parse_type_val_for_number, impl_block_parse_type_val_for_str};
 
 pub fn get_random_word_en() -> String {
@@ -371,15 +371,15 @@ pub type Json = serde_json::Value;
 pub fn get_random_string_two(_: &str, _: &str) -> String {
     return get_random_string();
 }
-use bloom::{BloomFilter, ASMS};
+
 
 /// 通用生成测试数据方法
-pub fn get_fake_data(columns: &Vec<OutputColumn>) -> Json {
+pub fn get_fake_data(columns: &Vec<DataSourceColumn>) -> Json {
     let mut data = json!({});
     let mut rng = thread_rng();
-    for colum in columns {
-        let name = colum.name();
-        let data_type = colum.data_type();
+    for column in columns {
+        let name = column.name();
+        let data_type = column.data_type();
         match data_type {
             DataTypeEnum::UInt8(val) => {
                 impl_block_parse_type_val_for_number!(u8, rng, get_random_u8, val, data, name)

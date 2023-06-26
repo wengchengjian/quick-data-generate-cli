@@ -2,8 +2,7 @@ use clickhouse::Client;
 
 use crate::{
     core::{cli::Cli, log::StaticsLogger},
-    model::column::OutputColumn,
-    task::clickhouse::ClickHouseTask,
+    task::clickhouse::ClickHouseTask, model::column::DataSourceColumn,
 };
 
 impl ClickHouseOutput {
@@ -78,5 +77,5 @@ pub struct ClickHouseOutput {
 
     pub tasks: Vec<ClickHouseTask>,
 
-    pub columns: Vec<OutputColumn>,
+    pub columns: Vec<DataSourceColumn>,
 }

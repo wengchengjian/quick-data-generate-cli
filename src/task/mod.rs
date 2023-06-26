@@ -6,9 +6,11 @@ pub mod clickhouse;
 pub mod csv;
 pub mod kafka;
 pub mod mysql;
+pub mod fake;
 
 #[async_trait]
 pub trait Task: Send + Sync {
+
     fn shutdown(&mut self) -> &mut Shutdown;
 
     fn executor(&self) -> Box<dyn Exector>;
@@ -16,7 +18,7 @@ pub trait Task: Send + Sync {
     async fn run(&mut self) -> crate::Result<()> {
         while !self.shutdown().is_shutdown {
             let mut exector = self.executor();
-            match exector.add_batch().await {
+            match exector.execute().await {
                 Err(e) => {
                     println!("{:?}", e);
                     break;

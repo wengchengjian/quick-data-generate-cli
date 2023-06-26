@@ -7,31 +7,51 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc::{Sender, Receiver}, Mutex};
 
 use crate::{
     core::{
         error::{Error, IoError},
-        fake::get_fake_data,
         limit::token::TokenBuketLimiter,
         log::incr_log,
-    },
-    model::column::OutputColumn,
+    }, model::column::DataSourceColumn
 };
 
 pub mod csv;
 pub mod kafka;
 pub mod mysql;
+pub mod fake;
 
 #[async_trait]
 pub trait Exector: Send + Sync {
+
+    fn next(&self) -> usize {
+        0
+    }
+
     fn batch(&self) -> usize;
 
-    fn limiter(&mut self) -> Option<&mut Arc<Mutex<TokenBuketLimiter>>>;
+    fn limiter(&mut self) -> Option<&mut Arc<Mutex<TokenBuketLimiter>>> {
+        return None;
+    }
 
-    fn count(&mut self) -> Option<&Arc<AtomicI64>>;
+    fn count(&mut self) -> Option<&Arc<AtomicI64>> {
+        return None;
+    }
 
-    fn columns(&self) -> &Vec<OutputColumn>;
+    fn columns(&self) -> &Vec<DataSourceColumn>;
+
+    fn is_consumer(&mut self) -> bool {
+        return self.sender().is_none() && self.receiver().is_some();
+    }
+
+    fn receiver(&mut self) -> Option<&mut Arc<Mutex<Receiver<serde_json::Value>>>> {
+        return None
+    }
+
+    fn sender(&mut self) -> Option<&mut Sender<serde_json::Value>> {
+        return None
+    }
 
     fn name(&self) -> &str;
 
@@ -46,12 +66,31 @@ pub trait Exector: Send + Sync {
     async fn handle_single(&mut self, _v: &mut serde_json::Value) -> crate::Result<()> {
         Ok(())
     }
+    async fn handle_fetch(&mut self) -> crate::Result<Vec<serde_json::Value>> {
+        Ok(vec![])
+    }
 
+    async fn fetch_batch(&mut self) -> crate::Result<bool> {
+        let datas = self.handle_fetch().await?;
+        if datas.len() == 0 {
+            return Ok(true);
+        }
+        let datas = datas.clone();
+
+        match self.sender() {
+            Some(sender) => {
+                for data in datas {
+                    sender.send(data).await?;
+                }
+                Ok(false)
+            },
+            None => Ok(true)
+        }
+    }
     ///1. 获取令牌
     ///2. 检查count是否为0
     ///3. 制造数据
-    ///4.
-    async fn add_batch(&mut self) -> crate::Result<bool> {
+    async fn add_batch(&mut self) -> crate::Result<bool>{
         // let mut watch = StopWatch::new();
         let mut num = 0;
         let mut arr = Vec::with_capacity(self.batch() + self.batch() / 4);
@@ -69,20 +108,28 @@ pub trait Exector: Send + Sync {
                     break;
                 }
             }
-            let mut data = get_fake_data(self.columns());
+            match self.receiver() {
+                Some(receiver) => {
+                    let data = receiver.lock().await.recv().await;
 
-            if !self.is_multi_handle() {
-                self.handle_single(&mut data).await?;
-                num += 1;
-                if let Some(count) = self.count() {
-                    count.fetch_sub(1, Ordering::SeqCst);
-                }
-                if num % 100 == 0 {
-                    incr_log(&self.name(), num, 1).await;
-                    num = 0;
-                }
-            } else {
-                arr.push(data);
+                    if let Some(mut data) = data {
+                        if !self.is_multi_handle() {
+                            self.handle_single(&mut data).await?;
+                            num += 1;
+                            if let Some(count) = self.count() {
+                                count.fetch_sub(1, Ordering::SeqCst);
+                            }
+                            if num % 100 == 0 {
+                                incr_log(&self.name(), num, 1).await;
+                                num = 0;
+                            }
+                        } else {
+                            arr.push(data);
+                        }
+                    }
+
+                },
+                None => return Ok(true)
             }
         }
         if arr.len() == 0 {
@@ -125,6 +172,15 @@ pub trait Exector: Send + Sync {
                 _ => Ok(false),
             },
             None => Ok(false),
+        }
+    }
+
+
+    async fn execute(&mut self) -> crate::Result<bool> {
+        if self.is_consumer() {
+            return self.add_batch().await;
+        } else {
+            return self.fetch_batch().await;
         }
     }
 }

@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use clickhouse::{inserter::Inserter, Client};
 use serde_json::Value;
 
-use crate::output::Close;
+use crate::datasource::Close;
+
 
 #[derive(Debug)]
 pub struct ClickHouseTask {

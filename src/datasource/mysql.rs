@@ -12,10 +12,11 @@ use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::shutdown::Shutdown;
-use crate::model::column::{DataTypeEnum, DataSourceColumn, };
-use crate::model::schema::{ChannelSchema, DataSourceSchema, };
+use crate::model::column::{DataSourceColumn, DataTypeEnum};
+use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::mysql::MysqlTask;
 use crate::task::Task;
+use crate::Json;
 
 impl MysqlDataSource {
     pub fn connect(&mut self) -> Result<Pool> {
@@ -86,7 +87,6 @@ impl MysqlDataSource {
             columns: vec![],
             pool_cache: HashMap::new(),
             sources: vec!["fake_data_source".to_owned()],
-            
         };
 
         Ok(Box::new(res))
@@ -104,7 +104,14 @@ pub struct MysqlColumnDefine {
 }
 
 impl MysqlArgs {
-    pub fn from_value(meta: serde_json::Value, channel: ChannelSchema) -> Result<MysqlArgs> {
+    pub fn from_value(meta: Option<Json>, channel: Option<ChannelSchema>) -> Result<MysqlArgs> {
+        let meta = meta.unwrap_or(json!({
+        "host":"127.0.0.1",
+        "port": 3306
+        }));
+
+        let channel = channel.unwrap_or(ChannelSchema::default());
+
         Ok(MysqlArgs {
             host: meta["host"]
                 .as_str()
@@ -128,9 +135,9 @@ impl MysqlArgs {
                 .as_str()
                 .ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?
                 .to_string(),
-            batch: channel.batch,
-            count: channel.count,
-            concurrency: channel.concurrency,
+            batch: channel.batch.unwrap_or(1000),
+            count: channel.count.unwrap_or(usize::MAX),
+            concurrency: channel.concurrency.unwrap_or(1),
         })
     }
 }
@@ -174,9 +181,9 @@ impl TryFrom<DataSourceSchema> for MysqlDataSource {
             name: value.name,
             args: MysqlArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
-            columns: DataSourceColumn::get_columns_from_schema(&value.columns),
+            columns: DataSourceColumn::get_columns_from_schema(&value.columns.unwrap_or(json!(0))),
             pool_cache: HashMap::new(),
-            sources: value.sources,
+            sources: value.sources.unwrap_or(vec![]),
         })
     }
 }
@@ -188,7 +195,7 @@ impl super::DataSourceChannel for MysqlDataSource {
     fn sources(&self) -> Option<&Vec<String>> {
         return Some(&self.sources);
     }
-    
+
     fn columns_mut(&mut self, columns: Vec<DataSourceColumn>) {
         self.columns = columns;
     }
@@ -214,9 +221,9 @@ impl super::DataSourceChannel for MysqlDataSource {
 
     fn channel_schema(&self) -> Option<ChannelSchema> {
         return Some(ChannelSchema {
-            batch: self.args.batch,
-            concurrency: self.args.concurrency,
-            count: self.args.count,
+            batch: Some(self.args.batch),
+            concurrency: Some(self.args.concurrency),
+            count: Some(self.args.count),
         });
     }
 
@@ -238,13 +245,21 @@ impl super::DataSourceChannel for MysqlDataSource {
             x => Some(x),
         }
     }
-    
-    async fn before_run(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
+
+    async fn before_run(
+        &mut self,
+        _context: &mut DataSourceContext,
+        _channel: ChannelContext,
+    ) -> crate::Result<()> {
         // TODO 可以在这里建表之类的
         Ok(())
     }
-    
-    async fn after_run(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
+
+    async fn after_run(
+        &mut self,
+        _context: &mut DataSourceContext,
+        _channel: ChannelContext,
+    ) -> crate::Result<()> {
         for pool in self.pool_cache.values() {
             let _ = pool.to_owned().disconnect().await;
         }
@@ -256,9 +271,10 @@ impl super::DataSourceChannel for MysqlDataSource {
 
         let conn = pool.get_conn().await.expect("获取mysql连接失败!");
         // 获取字段定义
-        let columns = MysqlDataSource::get_columns_define(conn, &self.args.database, &self.args.table)
-            .await
-            .expect("获取字段定义失败");
+        let columns =
+            MysqlDataSource::get_columns_define(conn, &self.args.database, &self.args.table)
+                .await
+                .expect("获取字段定义失败");
 
         return Some(columns);
     }
@@ -284,7 +300,7 @@ impl super::DataSourceChannel for MysqlDataSource {
             shutdown,
             limiter,
             count_rc,
-        channel
+            channel,
         );
         return Some(Box::new(task));
     }
@@ -323,7 +339,7 @@ pub struct MysqlArgs {
     pub concurrency: usize,
 }
 
-use super::{Close, DataSourceChannel,DataSourceEnum, DataSourceContext, ChannelContext};
+use super::{ChannelContext, Close, DataSourceChannel, DataSourceContext, DataSourceEnum};
 
 #[derive(Debug)]
 pub struct MysqlDataSource {
@@ -336,7 +352,7 @@ pub struct MysqlDataSource {
     pub shutdown: AtomicBool,
 
     pub pool_cache: HashMap<String, Pool>,
-    
+
     pub sources: Vec<String>,
 }
 

@@ -8,16 +8,16 @@ use crate::core::error::{Error, IoError};
 use crate::core::cli::Cli;
 use crate::core::error::Result;
 use crate::core::log::{StaticsLogger, STATICS_LOGGER};
-use crate::datasource::{ChannelContext, DataSourceChannel, Close};
+use crate::datasource::{ChannelContext, Close, DataSourceChannel};
 use datasource::{DataSourceContext, DelegatedDataSource};
 use model::schema::Schema;
 use structopt::StructOpt;
 
-use tokio::{signal};
+use tokio::signal;
 // use tracing::{error, info, Level};
 // use tracing_subscriber::FmtSubscriber;
-pub mod datasource;
 pub mod core;
+pub mod datasource;
 pub mod exec;
 pub mod macros;
 pub mod model;
@@ -44,11 +44,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-pub fn create_context(
-    limit: Option<usize>,
-    skip: bool,
-    schema: Schema,
-) -> DataSourceContext {
+pub fn create_context(limit: Option<usize>, skip: bool, schema: Schema) -> DataSourceContext {
     return DataSourceContext::new(limit, skip, schema);
 }
 
@@ -103,7 +99,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
 }
 
 async fn output_schema_to_dir(id: &str, schema: &Schema) -> PathBuf {
-    let filename = format!("/{}/{}.{}","schema", id, "json");
+    let filename = format!("/{}/{}.{}", "schema", id, "json");
 
     let mut path = home::home_dir().unwrap_or(PathBuf::from("./"));
 

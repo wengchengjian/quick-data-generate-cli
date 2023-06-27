@@ -1,6 +1,4 @@
-
 use std::ops::Range;
-
 
 use fake::faker::address::raw::*;
 use fake::faker::internet::raw::*;
@@ -301,7 +299,7 @@ use time::format_description::FormatItem;
 use time::macros::{datetime, format_description};
 use time::OffsetDateTime;
 
-use crate::model::column::{DataTypeEnum, FixedValue, DataSourceColumn};
+use crate::model::column::{DataSourceColumn, DataTypeEnum, FixedValue};
 use crate::{impl_block_parse_type_val_for_number, impl_block_parse_type_val_for_str};
 
 pub fn get_random_word_en() -> String {
@@ -371,7 +369,6 @@ pub type Json = serde_json::Value;
 pub fn get_random_string_two(_: &str, _: &str) -> String {
     return get_random_string();
 }
-
 
 /// 通用生成测试数据方法
 pub fn get_fake_data(columns: &Vec<DataSourceColumn>) -> Json {

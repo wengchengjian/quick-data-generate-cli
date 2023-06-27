@@ -300,7 +300,7 @@ impl FromStr for DataTypeEnum {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::core::parse::{parse_schema, parse_datasources_from_schema};
+    use crate::core::parse::{parse_datasources_from_schema, parse_schema};
 
     use super::*;
 

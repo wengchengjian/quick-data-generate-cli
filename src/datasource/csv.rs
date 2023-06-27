@@ -3,10 +3,11 @@ use crate::core::error::{Error, IoError, Result};
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::log::register;
 use crate::core::shutdown::Shutdown;
-use crate::model::column::{DataSourceColumn};
+use crate::model::column::DataSourceColumn;
 use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::csv::CsvTask;
 use crate::task::Task;
+use crate::Json;
 use bytes::Buf;
 use serde_json::json;
 
@@ -19,7 +20,7 @@ use std::vec;
 use tokio::fs::File;
 
 use tokio::io::AsyncWriteExt;
-use tokio::io::{BufWriter};
+use tokio::io::BufWriter;
 use tokio::sync::{mpsc, Mutex};
 
 impl CsvDataSource {
@@ -57,16 +58,20 @@ pub struct CsvColumnDefine {
 }
 
 impl CsvArgs {
-    pub fn from_value(meta: serde_json::Value, channel: ChannelSchema) -> Result<CsvArgs> {
+    pub fn from_value(meta: Option<Json>, channel: Option<ChannelSchema>) -> Result<CsvArgs> {
+        let meta = meta.unwrap_or(json!({}));
+
+        let channel = channel.unwrap_or(ChannelSchema::default());
+
         Ok(CsvArgs {
             filename: meta["filename"]
                 .as_str()
                 .ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?
                 .to_string(),
 
-            batch: channel.batch,
-            count: channel.count,
-            concurrency: channel.concurrency,
+            batch: channel.batch.unwrap_or(1000),
+            count: channel.count.unwrap_or(usize::MAX),
+            concurrency: channel.concurrency.unwrap_or(1),
         })
     }
 }
@@ -92,9 +97,8 @@ impl TryFrom<DataSourceSchema> for CsvDataSource {
             name: value.name,
             args: CsvArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
-            columns: DataSourceColumn::get_columns_from_schema(&value.columns),
-            sources: value.sources,
-            
+            columns: DataSourceColumn::get_columns_from_schema(&value.columns.unwrap_or(json!(0))),
+            sources: value.sources.unwrap_or(vec![]),
         })
     }
 }
@@ -106,8 +110,12 @@ impl super::DataSourceChannel for CsvDataSource {
     fn sources(&self) -> Option<&Vec<String>> {
         return Some(&self.sources);
     }
-    
-    async fn before_run(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
+
+    async fn before_run(
+        &mut self,
+        _context: &mut DataSourceContext,
+        _channel: ChannelContext,
+    ) -> crate::Result<()> {
         //注册日志
         register(&self.name().clone()).await;
         // 创建csv文件
@@ -155,9 +163,9 @@ impl super::DataSourceChannel for CsvDataSource {
 
     fn channel_schema(&self) -> Option<ChannelSchema> {
         return Some(ChannelSchema {
-            batch: self.args.batch,
-            concurrency: self.args.concurrency,
-            count: self.args.count,
+            batch: Some(self.args.batch),
+            concurrency: Some(self.args.concurrency),
+            count: Some(self.args.count),
         });
     }
 
@@ -185,7 +193,8 @@ impl super::DataSourceChannel for CsvDataSource {
     }
 
     fn get_task(
-        &mut self, _channel: ChannelContext,
+        &mut self,
+        _channel: ChannelContext,
         columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
@@ -228,7 +237,7 @@ pub struct CsvArgs {
     pub concurrency: usize,
 }
 
-use super::{Close,DataSourceContext, DataSourceEnum, DataSourceChannel, ChannelContext};
+use super::{ChannelContext, Close, DataSourceChannel, DataSourceContext, DataSourceEnum};
 
 #[derive(Debug)]
 pub struct CsvDataSource {
@@ -239,7 +248,7 @@ pub struct CsvDataSource {
     pub columns: Vec<DataSourceColumn>,
 
     pub shutdown: AtomicBool,
-    
+
     pub sources: Vec<String>,
 }
 
@@ -252,7 +261,7 @@ impl TryFrom<Cli> for Box<CsvDataSource> {
             args: value.try_into()?,
             shutdown: AtomicBool::new(false),
             columns: vec![],
-            sources: vec![]
+            sources: vec![],
         };
 
         Ok(Box::new(res))

@@ -5,9 +5,9 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     core::{limit::token::TokenBuketLimiter, shutdown::Shutdown},
+    datasource::{csv::CsvArgs, Close},
     exec::{csv::CsvTaskExecutor, Exector},
-    model::column::{DataSourceColumn},
- datasource::{csv::CsvArgs, Close},
+    model::column::DataSourceColumn,
 };
 
 use super::Task;

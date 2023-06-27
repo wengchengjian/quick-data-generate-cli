@@ -41,7 +41,6 @@ pub enum IoError {
     UnkownSourceError(String),
 }
 
-
 impl From<mysql_async::Error> for Error {
     fn from(value: mysql_async::Error) -> Self {
         Error::Other(Box::new(value))

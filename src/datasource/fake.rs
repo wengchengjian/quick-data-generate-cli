@@ -1,25 +1,28 @@
+use serde_json::json;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use std::vec;
 use tokio::sync::{mpsc, Mutex};
 
-
-use crate::core::error::{Result};
+use crate::core::error::Result;
 use crate::core::limit::token::TokenBuketLimiter;
+use crate::core::parse::DEFAULT_FAKE_DATASOURCE;
 use crate::core::shutdown::Shutdown;
-use crate::model::column::{DataSourceColumn, };
-use crate::model::schema::{ChannelSchema, };
-use crate::task::Task;
+use crate::model::column::DataSourceColumn;
+use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::fake::FakeTask;
+use crate::task::Task;
 
 impl FakeDataSource {
-    pub fn new(batch: usize,  concurrency: usize) -> FakeDataSource{
+    pub fn new(schema: DataSourceSchema) -> FakeDataSource {
+        let batch = schema.channel.as_ref().unwrap().batch.unwrap_or(1000);
+        let concurrency = schema.channel.unwrap().concurrency.unwrap_or(1);
         FakeDataSource {
-            name: "fake".into(),
+            name: DEFAULT_FAKE_DATASOURCE.to_owned(),
             shutdown: AtomicBool::new(false),
-            columns: vec![],
-            args: FakeArgs::new(batch,concurrency)
+            columns: DataSourceColumn::get_columns_from_schema(&schema.columns.unwrap_or(json!(0))),
+            args: FakeArgs::new(batch, concurrency),
         }
     }
 }
@@ -36,10 +39,7 @@ pub struct FakeColumnDefine {
 
 impl FakeArgs {
     pub fn new(batch: usize, concurrency: usize) -> FakeArgs {
-        FakeArgs {
-            batch,
-            concurrency,
-        }
+        FakeArgs { batch, concurrency }
     }
 }
 
@@ -56,7 +56,11 @@ impl super::DataSourceChannel for FakeDataSource {
     }
 
     fn channel_schema(&self) -> Option<ChannelSchema> {
-        return Some(ChannelSchema { batch: self.args.batch, concurrency: self.args.concurrency, count: usize::MAX });
+        return Some(ChannelSchema {
+            batch: Some(self.args.batch),
+            concurrency: Some(self.args.concurrency),
+            count: Some(usize::MAX),
+        });
     }
 
     fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
@@ -71,7 +75,6 @@ impl super::DataSourceChannel for FakeDataSource {
         return &self.name;
     }
 
-
     fn get_task(
         &mut self,
         channel: ChannelContext,
@@ -80,14 +83,14 @@ impl super::DataSourceChannel for FakeDataSource {
         shutdown: Shutdown,
         _count_rc: Option<Arc<AtomicI64>>,
         _limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
-        ) -> Option<Box<dyn Task>> {
+    ) -> Option<Box<dyn Task>> {
         let task = FakeTask::from_args(
             self.name.clone(),
             &self.args,
             columns,
             shutdown_complete_tx,
             shutdown,
-        channel
+            channel,
         );
         return Some(Box::new(task));
     }
@@ -112,7 +115,7 @@ pub struct FakeArgs {
     pub concurrency: usize,
 }
 
-use super::{Close,DataSourceEnum, ChannelContext};
+use super::{ChannelContext, Close, DataSourceEnum};
 
 #[derive(Debug)]
 pub struct FakeDataSource {
@@ -124,4 +127,3 @@ pub struct FakeDataSource {
 
     pub args: FakeArgs,
 }
-

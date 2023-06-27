@@ -80,7 +80,7 @@
 
             },
             "channel": {
-                "batch": 2000,
+                "batch": 1000,
                 "concurrency": 2,
                 "count": 10000
             },

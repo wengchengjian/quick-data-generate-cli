@@ -1,16 +1,24 @@
+use serde_json::json;
+
 use super::{
     check::{DEFAULT_INTERVAL, MIN_THREAD_SIZE},
     cli::Cli,
-    error::{Error, Result, IoError},
+    error::{Error, IoError, Result},
 };
-use std::{path::PathBuf, collections::HashMap};
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::{
-    create_context, impl_func_is_primitive_by_parse,
+    create_context,
+    datasource::{
+        csv::CsvDataSource, fake::FakeDataSource, kafka::KafkaDataSource, mysql::MysqlDataSource,
+        DataSourceChannel, DataSourceContext, DataSourceEnum, MpscDataSourceChannel,
+    },
+    impl_func_is_primitive_by_parse,
     model::{
-        column::{DataTypeEnum, FixedValue, DataSourceColumn},
-        schema::{Schema, DataSourceSchema},
-    }, datasource::{DataSourceChannel, DataSourceContext, DataSourceEnum, mysql::MysqlDataSource, kafka::KafkaDataSource, csv::CsvDataSource, fake::FakeDataSource, MpscDataSourceChannel},
+        column::{DataSourceColumn, DataTypeEnum, FixedValue},
+        schema::{ChannelSchema, DataSourceSchema, Schema},
+    },
+    Json,
 };
 
 impl_func_is_primitive_by_parse!((is_u8, u8), (is_u16, u16), (is_u32, u32), (is_u64, u64));
@@ -22,15 +30,32 @@ pub fn parse_schema(path: &PathBuf) -> Result<Schema> {
     Ok(schema)
 }
 
-pub fn parse_mpsc_from_schema(schema: &DataSourceSchema, source_map: HashMap<&str, DataSourceSchema>) -> Result<Box<dyn DataSourceChannel>> {
-
+pub fn parse_mpsc_from_schema(
+    schema: &DataSourceSchema,
+    source_map: HashMap<&str, DataSourceSchema>,
+) -> Result<Box<dyn DataSourceChannel>> {
     let mut source_map = source_map;
 
-    source_map.entry(DEFAULT_FAKE_DATASOURCE).or_insert(DataSourceSchema::fake());
+    source_map
+        .entry(DEFAULT_FAKE_DATASOURCE)
+        .or_insert(merge_datasource_schema_args(
+            schema,
+            &DataSourceSchema::fake(),
+        ));
 
     let mut producer = vec![];
     let default_sources = vec![DEFAULT_FAKE_DATASOURCE.to_owned()];
-    let mut sources = &schema.sources;
+    let mut sources: &Vec<String> = &vec![];
+
+    match &schema.sources {
+        Some(arr) => {
+            sources = arr;
+        }
+        None => {
+            sources = &default_sources;
+        }
+    }
+
     if sources.len() == 0 {
         sources = &default_sources;
     }
@@ -38,13 +63,15 @@ pub fn parse_mpsc_from_schema(schema: &DataSourceSchema, source_map: HashMap<&st
     for source in sources {
         match source_map.get(source.as_str()) {
             Some(source_schema) => {
-                let schema = (*source_schema).to_owned();
-                let datasource = parse_datasource_from_schema(schema)?;
-                producer.push(datasource);
-            },
+                if source_schema.name.ne(&schema.name) {
+                    let schema = (*source_schema).to_owned();
+                    let datasource = parse_datasource_from_schema(schema)?;
+                    producer.push(datasource);
+                }
+            }
             None => {
                 return Err(Error::Io(IoError::UnkownSourceError(source.clone())));
-            },
+            }
         }
     }
 
@@ -56,37 +83,64 @@ pub fn parse_mpsc_from_schema(schema: &DataSourceSchema, source_map: HashMap<&st
 }
 
 pub fn parse_datasource_from_schema(
-    schema: DataSourceSchema
+    schema: DataSourceSchema,
 ) -> Result<Box<dyn DataSourceChannel>> {
+    let mut schema = schema;
+    if let None = schema.channel {
+        let _ = schema.channel.insert(ChannelSchema::default());
+    }
 
-  match schema.source {
-      DataSourceEnum::Mysql => Ok(Box::new(MysqlDataSource::try_from(schema)?)),
-      DataSourceEnum::Kafka => Ok(Box::new(KafkaDataSource::try_from(schema)?)),
-      DataSourceEnum::Csv => Ok(Box::new(CsvDataSource::try_from(schema)?)),
-      DataSourceEnum::Fake => Ok(Box::new(FakeDataSource::new(schema.channel.batch, schema.channel.concurrency))),
-      _ => {
+    match schema.source {
+        DataSourceEnum::Mysql => Ok(Box::new(MysqlDataSource::try_from(schema)?)),
+        DataSourceEnum::Kafka => Ok(Box::new(KafkaDataSource::try_from(schema)?)),
+        DataSourceEnum::Csv => Ok(Box::new(CsvDataSource::try_from(schema)?)),
+        DataSourceEnum::Fake => Ok(Box::new(FakeDataSource::new(schema))),
+        _ => {
             return Err(Error::Io(IoError::UnkownSourceError("source".to_owned())));
-        },
+        }
     }
 }
 
 pub const DEFAULT_FAKE_DATASOURCE: &str = "fake_datasource";
 
+///
+pub fn merge_json(source: &Json, target: &mut Json) {
+    match (source, target) {
+        (&Json::Object(ref source), &mut Json::Object(ref mut target)) => {
+            for (k, v) in source {
+                merge_json(v, target.entry(k.clone()).or_insert(Json::Null));
+            }
+        }
 
-pub fn merge_datasource_schema_args(source: &DataSourceSchema, target: &DataSourceSchema) -> DataSourceSchema{
-    let name = target.name.clone();
+        (a, b) => {
+            if let Json::Null = b {
+                *b = a.clone();
+            }
+        }
+    }
+}
 
-    let meta = target.meta.clone();
-
-    let source = target.source;
-
-    let column = target.columns.clone();
-
-    let sources = target.sources.clone();
-
-    let channel = target.channel.clone();
-
-    DataSourceSchema::new(name, source, meta, column, channel,sources)
+pub fn merge_datasource_schema_args(
+    source: &DataSourceSchema,
+    target: &DataSourceSchema,
+) -> DataSourceSchema {
+    let mut result = target.clone();
+    if result.name.eq(source.name.as_str()) {
+        return result;
+    }
+    let source_meta = source.meta.clone().unwrap_or(json!({}));
+    let source_columns = source.columns.clone().unwrap_or(json!({}));
+    if let Some(meta) = result.meta.as_mut() {
+        merge_json(&source_meta, meta);
+    } else {
+        result.meta = Some(source_meta);
+    }
+    if let Some(columns) = result.columns.as_mut() {
+        merge_json(&source_columns, columns);
+    } else {
+        result.columns = Some(source_columns);
+    }
+    return result;
 }
 
 pub fn parse_datasources_from_schema(schema: Schema) -> Result<Vec<Box<dyn DataSourceChannel>>> {
@@ -96,7 +150,16 @@ pub fn parse_datasources_from_schema(schema: Schema) -> Result<Vec<Box<dyn DataS
 
     for source in sources {
         // 整合参数
-        let source_map: HashMap<&str, DataSourceSchema> = schema.sources.iter().map(|item| (item.name.as_str(), merge_datasource_schema_args(source, item))).collect();
+        let source_map: HashMap<&str, DataSourceSchema> = schema
+            .sources
+            .iter()
+            .map(|item| {
+                (
+                    item.name.as_str(),
+                    merge_datasource_schema_args(source, item),
+                )
+            })
+            .collect();
 
         outputs.push(parse_mpsc_from_schema(source, source_map)?);
     }
@@ -118,7 +181,9 @@ pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn DataSourceChannel>> {
     };
 }
 
-pub fn parse_schema_from_datasources(datasources: &Vec<Box<dyn DataSourceChannel>>) -> Vec<DataSourceSchema> {
+pub fn parse_schema_from_datasources(
+    datasources: &Vec<Box<dyn DataSourceChannel>>,
+) -> Vec<DataSourceSchema> {
     let mut res = vec![];
 
     for datasource in datasources {
@@ -132,26 +197,27 @@ pub fn parse_schema_from_datasources(datasources: &Vec<Box<dyn DataSourceChannel
 }
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
-pub fn parse_datasource(cli: Cli) -> Result<(Vec<Box<dyn DataSourceChannel>>, usize, DataSourceContext)> {
+pub fn parse_datasource(
+    cli: Cli,
+) -> Result<(Vec<Box<dyn DataSourceChannel>>, usize, DataSourceContext)> {
     let mut cli = cli;
     let mut datasources = vec![];
     let interval = cli.interval;
-    let mut concurrency = cli.concurrency;
 
-     let _ = cli.source.insert(DataSourceEnum::Mysql);
+    let _ = cli.source.insert(DataSourceEnum::Mysql);
     // let _ = cli.topic.insert("FileHttpLogPushService".to_string());
-     cli.host = "192.168.180.217".to_owned();
-     let _ = cli.user.insert("root".to_string());
-     let _ = cli.database.insert("tests".to_string());
-     let _ = cli.table.insert("bfc_model_task".to_string());
-     let _ = cli.password.insert("bfcdb@123".to_string());
-     let _ = cli.batch.insert(1000);
-     let _ = cli.count.insert(50000);
+    cli.host = "192.168.180.217".to_owned();
+    let _ = cli.user.insert("root".to_string());
+    let _ = cli.database.insert("tests".to_string());
+    let _ = cli.table.insert("bfc_model_task".to_string());
+    let _ = cli.password.insert("bfcdb@123".to_string());
+    let _ = cli.batch.insert(1000);
+    let _ = cli.count.insert(50000);
     let _ = cli.concurrency.insert(1);
     // let _ = cli.interval.insert(1);
-//    let _ = cli.schema.insert(PathBuf::from(
-//        "C:\\Users\\Administrator\\23383409-6532-437b-af7e-ee9cd4b87127.json",
-//    ));
+    //    let _ = cli.schema.insert(PathBuf::from(
+    //        "C:\\Users\\Administrator\\23383409-6532-437b-af7e-ee9cd4b87127.json",
+    //    ));
 
     if let Some(schema_path) = &cli.schema {
         let schema = parse_schema(schema_path).unwrap();
@@ -174,10 +240,7 @@ pub fn parse_datasource(cli: Cli) -> Result<(Vec<Box<dyn DataSourceChannel>>, us
     }
     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
 
-    let schema = Schema::new(
-        Some(interval),
-        parse_schema_from_datasources(&datasources),
-    );
+    let schema = Schema::new(Some(interval), parse_schema_from_datasources(&datasources));
     let context = create_context(limit, skip, schema);
 
     return Ok((datasources, interval, context));
@@ -269,6 +332,8 @@ pub fn parse_type(val: &serde_json::Value) -> DataTypeEnum {
 mod tests {
     use std::{fs, path::PathBuf};
 
+    use serde_json::json;
+
     use super::*;
 
     static SCHEMA_PATH: &'static str = "examples/schema.json";
@@ -299,6 +364,33 @@ mod tests {
             }
             Err(e) => panic!("read schema file error:{e}"),
         }
+    }
+
+    #[test]
+    fn test_json_merge() {
+        let mut a = json!({
+            "title": "this is a title",
+            "person" : {
+                "firstName": "wengs",
+            },
+            "citys":["chengdu"]
+        });
+
+        let b = json!({
+            "title": "This is a title",
+            "person" : {
+                "firstName": "weng",
+                "lastName": "chengjian",
+                "but": null
+            },
+            "citys":["chengdu","banas"]
+        });
+
+        merge_json(&b, &mut a);
+        assert_eq!(a["title"], json!("this is a title"));
+        assert_eq!(a["person"]["firstName"], json!("wengs"));
+        assert_eq!(a["person"]["lastName"], json!("chengjian"));
+        assert_eq!(a["citys"], json!(["chengdu"]));
     }
 
     #[test]

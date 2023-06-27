@@ -1,18 +1,37 @@
 use core::fmt;
-use std::{sync::{Arc, atomic::{AtomicI64, Ordering}}, str::FromStr};
+use std::{
+    str::FromStr,
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc,
+    },
+};
 
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::sync::{mpsc::{self, Sender, Receiver}, Mutex, broadcast, Semaphore};
+use tokio::sync::{
+    broadcast,
+    mpsc::{self, Receiver, Sender},
+    Mutex, Semaphore,
+};
 
-use crate::{core::{log::register, shutdown::Shutdown, limit::token::TokenBuketLimiter, fake::get_random_uuid}, model::{schema::{ChannelSchema, Schema, DataSourceSchema}, column::DataSourceColumn}, task::Task};
+use crate::{
+    core::{
+        fake::get_random_uuid, limit::token::TokenBuketLimiter, log::register, shutdown::Shutdown,
+    },
+    model::{
+        column::DataSourceColumn,
+        schema::{ChannelSchema, DataSourceSchema, Schema},
+    },
+    task::Task,
+};
 
 pub mod clickhouse;
 pub mod csv;
+pub mod fake;
 pub mod kafka;
 pub mod mysql;
-pub mod fake;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum DataSourceEnum {
@@ -24,9 +43,8 @@ pub enum DataSourceEnum {
     //    ElasticSearch,
     //
     Csv,
-    Fake
-    //
-    //    SqlServer,
+    Fake, //
+          //    SqlServer,
 }
 
 impl FromStr for DataSourceEnum {
@@ -52,13 +70,19 @@ impl FromStr for DataSourceEnum {
 #[derive(Clone)]
 pub struct ChannelContext {
     pub sender: Option<Sender<serde_json::Value>>,
-    
+
     pub receiver: Option<Arc<Mutex<Receiver<serde_json::Value>>>>,
 }
 
 impl ChannelContext {
-    pub fn new(sender: Option<Sender<serde_json::Value>>, receiver:Option<Receiver<serde_json::Value>>) -> Self {
-        Self { sender, receiver: receiver.map(|receiver| Arc::new(Mutex::new(receiver))) }
+    pub fn new(
+        sender: Option<Sender<serde_json::Value>>,
+        receiver: Option<Receiver<serde_json::Value>>,
+    ) -> Self {
+        Self {
+            sender,
+            receiver: receiver.map(|receiver| Arc::new(Mutex::new(receiver))),
+        }
     }
 }
 
@@ -68,7 +92,6 @@ pub struct DataSourceContext {
     pub id: String,
     pub schema: Schema,
 }
-
 
 impl DataSourceContext {
     pub fn new(limit: Option<usize>, skip: bool, schema: Schema) -> Self {
@@ -95,19 +118,22 @@ pub struct DelegatedDataSource {
 #[derive(Debug)]
 pub struct MpscDataSourceChannel {
     pub producer: Vec<Box<dyn DataSourceChannel>>,
-    
-    pub consumer: Box<dyn DataSourceChannel>
+
+    pub consumer: Box<dyn DataSourceChannel>,
 }
 
 impl MpscDataSourceChannel {
-    pub fn new(producer: Vec<Box<dyn DataSourceChannel>>, consumer: Box<dyn DataSourceChannel>) -> Self {
+    pub fn new(
+        producer: Vec<Box<dyn DataSourceChannel>>,
+        consumer: Box<dyn DataSourceChannel>,
+    ) -> Self {
         Self { producer, consumer }
     }
 }
 
 #[async_trait]
 impl Close for MpscDataSourceChannel {
-    async fn close(&mut self) -> crate::Result<()>{
+    async fn close(&mut self) -> crate::Result<()> {
         for ele in &mut self.producer {
             ele.close().await?;
         }
@@ -115,7 +141,6 @@ impl Close for MpscDataSourceChannel {
         self.consumer.close().await?;
         Ok(())
     }
-
 }
 
 #[async_trait]
@@ -128,9 +153,13 @@ impl DataSourceChannel for MpscDataSourceChannel {
         return "mspc-datasource";
     }
 
-    async fn run(&mut self, context: &mut DataSourceContext, _chanel: ChannelContext) -> crate::Result<()> {
+    async fn run(
+        &mut self,
+        context: &mut DataSourceContext,
+        _chanel: ChannelContext,
+    ) -> crate::Result<()> {
         let (tx, rx) = mpsc::channel(10000);
-        
+
         for producer in &mut self.producer {
             producer.send(context, tx.clone()).await?;
         }
@@ -161,7 +190,11 @@ impl DataSourceChannel for DelegatedDataSource {
         return self.name.as_str();
     }
 
-    async fn run(&mut self, context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
+    async fn run(
+        &mut self,
+        context: &mut DataSourceContext,
+        _channel: ChannelContext,
+    ) -> crate::Result<()> {
         let datasources = &mut self.datasources;
         let channel = ChannelContext::new(None, None);
         for datasource in datasources {
@@ -171,7 +204,6 @@ impl DataSourceChannel for DelegatedDataSource {
         Ok(())
     }
 }
-
 
 impl DelegatedDataSource {
     pub fn new(datasources: Vec<Box<dyn DataSourceChannel>>) -> Self {
@@ -186,50 +218,67 @@ impl DelegatedDataSource {
         &mut self,
         output: &mut Box<dyn DataSourceChannel>,
         context: &mut DataSourceContext,
-        ) -> crate::Result<()> {
+    ) -> crate::Result<()> {
         output.run(context, ChannelContext::new(None, None)).await
     }
 }
 
-
 #[async_trait]
 pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
-    
     fn need_log(&self) -> bool {
         return true;
     }
-    
+
     /// 通用初始化逻辑
-    async fn init(&mut self, _context: &mut DataSourceContext , _channel: ChannelContext) {
+    async fn init(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) {
         //注册日志
         if self.need_log() {
             register(&self.name().clone()).await;
         }
     }
 
-    async fn before_run(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
-
+    async fn before_run(
+        &mut self,
+        _context: &mut DataSourceContext,
+        _channel: ChannelContext,
+    ) -> crate::Result<()> {
         Ok(())
     }
 
-    async fn after_run(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) -> crate::Result<()> {
+    async fn after_run(
+        &mut self,
+        _context: &mut DataSourceContext,
+        _channel: ChannelContext,
+    ) -> crate::Result<()> {
         Ok(())
     }
 
-    async fn execute(&mut self, context: &mut DataSourceContext, channel: ChannelContext) -> crate::Result<()> {
+    async fn execute(
+        &mut self,
+        context: &mut DataSourceContext,
+        channel: ChannelContext,
+    ) -> crate::Result<()> {
         self.init(context, channel.clone()).await;
         self.before_run(context, channel.clone()).await?;
         self.run(context, channel.clone()).await?;
         self.after_run(context, channel.clone()).await
     }
-    
-    async fn send(&mut self, context: &mut DataSourceContext, sender: Sender<serde_json::Value>) -> crate::Result<()> {
+
+    async fn send(
+        &mut self,
+        context: &mut DataSourceContext,
+        sender: Sender<serde_json::Value>,
+    ) -> crate::Result<()> {
         let channel_context = ChannelContext::new(Some(sender), None);
-        
+
         self.execute(context, channel_context).await
     }
-    
-    async fn recv(&mut self, context: &mut DataSourceContext, receiver: Receiver<serde_json::Value>) -> crate::Result<()> {
+
+    async fn recv(
+        &mut self,
+        context: &mut DataSourceContext,
+        receiver: Receiver<serde_json::Value>,
+    ) -> crate::Result<()> {
         let channel_context = ChannelContext::new(None, Some(receiver));
 
         self.execute(context, channel_context).await
@@ -264,22 +313,19 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
                     Some(source_type) => source_type,
                     None => return None,
                 },
-                sources: Vec::new(),
-                meta: match self.meta() {
-                    Some(meta) => meta,
-                    None => return None,
-                },
+                sources: Some(Vec::new()),
+                meta: self.meta(),
                 columns: match self.columns() {
                     Some(columns) => {
                         let mut res = json!({});
                         for column in columns {
                             res[&column.name] = json!(column.data_type().to_string());
                         }
-                        res
+                        Some(res)
                     }
                     None => return None,
                 },
-                channel: channel_schema,
+                channel: Some(channel_schema),
             }),
             None => None,
         }
@@ -301,7 +347,6 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
 
     fn columns_mut(&mut self, _columns: Vec<DataSourceColumn>) {}
 
-
     async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
         return None;
     }
@@ -314,7 +359,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
         _shutdown: Shutdown,
         _count_rc: Option<Arc<AtomicI64>>,
         _limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
-        ) -> Option<Box<dyn Task>> {
+    ) -> Option<Box<dyn Task>> {
         return None;
     }
 
@@ -326,7 +371,11 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
     ///1. 获取字段定义
     ///2. 生成输出任务
     ///3. 等待任务执行完毕
-    async fn run(&mut self, context: &mut DataSourceContext, channel: ChannelContext) -> crate::Result<()> {
+    async fn run(
+        &mut self,
+        context: &mut DataSourceContext,
+        channel: ChannelContext,
+    ) -> crate::Result<()> {
         // 获取字段定义
         let columns = self.get_columns_define().await.unwrap_or(vec![]);
 
@@ -340,10 +389,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
 
         match self.transfer_to_schema() {
             Some(schema) => {
-                context
-                    .schema
-                    .sources
-                    .push(schema);
+                context.schema.sources.push(schema);
             }
             None => {
                 println!("不能解析output的schema");
@@ -405,7 +451,6 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
             }
         }
 
-       
         drop(notify_shutdown);
         drop(shutdown_complete_tx);
         // 等待所有的task执行完毕

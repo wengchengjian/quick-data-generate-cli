@@ -7,9 +7,9 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     core::{limit::token::TokenBuketLimiter, shutdown::Shutdown},
+    datasource::{mysql::MysqlArgs, ChannelContext, Close},
     exec::{mysql::MysqlTaskExecutor, Exector},
-    model::column::{ DataSourceColumn}
-    , datasource::{mysql::MysqlArgs, Close, ChannelContext},
+    model::column::DataSourceColumn,
 };
 
 use super::Task;
@@ -71,7 +71,16 @@ impl MysqlTask {
             shutdown,
             columns,
             executor: MysqlTaskExecutor::new(
-                pool, args.batch, count_rc, data2, table2, columns2, name2, limiter, channel.receiver,channel.sender, 
+                pool,
+                args.batch,
+                count_rc,
+                data2,
+                table2,
+                columns2,
+                name2,
+                limiter,
+                channel.receiver,
+                channel.sender,
             ),
         }
     }

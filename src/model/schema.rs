@@ -1,9 +1,6 @@
-
-
 use serde::{Deserialize, Serialize};
 
-use crate::{datasource::{DataSourceEnum}, core::parse::DEFAULT_FAKE_DATASOURCE, Json};
-
+use crate::{core::parse::DEFAULT_FAKE_DATASOURCE, datasource::DataSourceEnum, Json};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Schema {
@@ -13,14 +10,8 @@ pub struct Schema {
 }
 
 impl Schema {
-    pub fn new(
-        interval: Option<usize>,
-        sources: Vec<DataSourceSchema>,
-    ) -> Self {
-        Self {
-            interval,
-            sources,
-        }
+    pub fn new(interval: Option<usize>, sources: Vec<DataSourceSchema>) -> Self {
+        Self { interval, sources }
     }
 }
 
@@ -36,19 +27,25 @@ pub struct DataSourceSchema {
 
     pub channel: Option<ChannelSchema>,
 
-    pub sources: Option<Vec<String>>
+    pub sources: Option<Vec<String>>,
 }
 
 impl DataSourceSchema {
-
-    pub fn new(name: String, source: DataSourceEnum, meta: serde_json::Value, columns: serde_json::Value, channel: ChannelSchema, sources: Vec<String>) -> Self {
+    pub fn new(
+        name: String,
+        source: DataSourceEnum,
+        meta: Option<Json>,
+        columns: Option<Json>,
+        channel: Option<ChannelSchema>,
+        sources: Option<Vec<String>>,
+    ) -> Self {
         Self {
             name,
             source,
-            meta: Some(meta),
-            columns: Some(columns),
-            channel: Some(channel),
-            sources: Some(sources),
+            meta,
+            columns,
+            channel,
+            sources,
         }
     }
 
@@ -59,21 +56,29 @@ impl DataSourceSchema {
             meta: None,
             columns: None,
             channel: Some(ChannelSchema {
-                batch: 5000,
-                concurrency: 1,
-                count: usize::MAX,
+                batch: Some(5000),
+                concurrency: Some(1),
+                count: Some(usize::MAX),
             }),
             sources: None,
         }
     }
 }
 
-
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChannelSchema {
     // 批量提交数量
-    pub batch: usize,
-    pub concurrency: usize,
-    pub count: usize,
+    pub batch: Option<usize>,
+    pub concurrency: Option<usize>,
+    pub count: Option<usize>,
+}
+
+impl ChannelSchema {
+    pub fn default() -> Self {
+        Self {
+            batch: Some(1000),
+            concurrency: Some(1),
+            count: Some(usize::MAX),
+        }
+    }
 }

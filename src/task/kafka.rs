@@ -6,9 +6,9 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     core::{limit::token::TokenBuketLimiter, shutdown::Shutdown},
+    datasource::{kafka::KafkaArgs, Close},
     exec::{kafka::KafkaTaskExecutor, Exector},
-    model::column::{ DataSourceColumn}
-, datasource::{kafka::KafkaArgs, Close},
+    model::column::DataSourceColumn,
 };
 
 use super::Task;

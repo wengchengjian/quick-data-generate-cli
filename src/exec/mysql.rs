@@ -1,8 +1,14 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
-use mysql_async::{prelude::{Query, WithParams}, Pool};
-use tokio::sync::{Mutex, mpsc::{Receiver, Sender}};
+use mysql_async::{
+    prelude::{Query, WithParams},
+    Pool,
+};
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    Mutex,
+};
 
 use crate::{
     core::{error::Error, limit::token::TokenBuketLimiter},
@@ -23,7 +29,7 @@ pub struct MysqlTaskExecutor {
     pub task_name: String,
     pub receiver: Option<Arc<Mutex<Receiver<serde_json::Value>>>>,
     pub sender: Option<Sender<serde_json::Value>>,
-    pub next: usize
+    pub next: usize,
 }
 
 impl MysqlTaskExecutor {
@@ -37,7 +43,7 @@ impl MysqlTaskExecutor {
         task_name: String,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
         receiver: Option<Arc<Mutex<Receiver<serde_json::Value>>>>,
-        sender: Option<Sender<serde_json::Value>>
+        sender: Option<Sender<serde_json::Value>>,
     ) -> Self {
         Self {
             pool,
@@ -50,7 +56,7 @@ impl MysqlTaskExecutor {
             limiter,
             receiver,
             sender,
-            next: 0
+            next: 0,
         }
     }
     pub fn get_columns_name(&self) -> (String, String) {
@@ -83,7 +89,6 @@ impl MysqlTaskExecutor {
 
 #[async_trait]
 impl Exector for MysqlTaskExecutor {
-
     fn batch(&self) -> usize {
         return self.batch;
     }
@@ -116,8 +121,10 @@ impl Exector for MysqlTaskExecutor {
     }
 
     async fn handle_fetch(&mut self) -> crate::Result<Vec<serde_json::Value>> {
-
-        let query_sql = format!("select * from {}.{} limit {}, {}", self.database, self.table, self.next, self.batch);
+        let query_sql = format!(
+            "select * from {}.{} limit {}, {}",
+            self.database, self.table, self.next, self.batch
+        );
 
         match self.pool.get_conn().await {
             Ok(mut conn) => {

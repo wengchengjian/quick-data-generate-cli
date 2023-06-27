@@ -4,7 +4,6 @@ use structopt::StructOpt;
 
 use crate::datasource::DataSourceEnum;
 
-
 #[derive(Debug, StructOpt, Clone)]
 #[structopt(
     name = "ckd",

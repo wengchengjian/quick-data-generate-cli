@@ -2,7 +2,8 @@ use clickhouse::Client;
 
 use crate::{
     core::{cli::Cli, log::StaticsLogger},
-    task::clickhouse::ClickHouseTask, model::column::DataSourceColumn,
+    model::column::DataSourceColumn,
+    task::clickhouse::ClickHouseTask,
 };
 
 impl ClickHouseOutput {

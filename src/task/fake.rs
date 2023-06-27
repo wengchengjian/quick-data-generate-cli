@@ -1,15 +1,12 @@
-
-
 use async_trait::async_trait;
 
-
-use tokio::sync::{mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
-    core::{shutdown::Shutdown},
-    exec::{Exector, fake::FakeTaskExecutor},
-    model::column::{ DataSourceColumn}
-    , datasource::{Close, ChannelContext, fake::FakeArgs},
+    core::shutdown::Shutdown,
+    datasource::{fake::FakeArgs, ChannelContext, Close},
+    exec::{fake::FakeTaskExecutor, Exector},
+    model::column::DataSourceColumn,
 };
 
 use super::Task;
@@ -50,7 +47,7 @@ impl FakeTask {
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
         channel: ChannelContext,
-        ) -> Self {
+    ) -> Self {
         let columns2 = columns.clone();
         let name2 = name.clone();
         Self {
@@ -59,9 +56,7 @@ impl FakeTask {
             shutdown_sender,
             shutdown,
             columns,
-            executor: FakeTaskExecutor::new(
-                args.batch,  columns2, name2, channel.sender, 
-            ),
+            executor: FakeTaskExecutor::new(args.batch, columns2, name2, channel.sender),
         }
     }
 }

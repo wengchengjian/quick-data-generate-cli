@@ -7,24 +7,27 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tokio::sync::{mpsc::{Sender, Receiver}, Mutex};
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    Mutex,
+};
 
 use crate::{
     core::{
         error::{Error, IoError},
         limit::token::TokenBuketLimiter,
         log::incr_log,
-    }, model::column::DataSourceColumn
+    },
+    model::column::DataSourceColumn,
 };
 
 pub mod csv;
+pub mod fake;
 pub mod kafka;
 pub mod mysql;
-pub mod fake;
 
 #[async_trait]
 pub trait Exector: Send + Sync {
-
     fn next(&self) -> usize {
         0
     }
@@ -46,11 +49,11 @@ pub trait Exector: Send + Sync {
     }
 
     fn receiver(&mut self) -> Option<&mut Arc<Mutex<Receiver<serde_json::Value>>>> {
-        return None
+        return None;
     }
 
     fn sender(&mut self) -> Option<&mut Sender<serde_json::Value>> {
-        return None
+        return None;
     }
 
     fn name(&self) -> &str;
@@ -83,14 +86,14 @@ pub trait Exector: Send + Sync {
                     sender.send(data).await?;
                 }
                 Ok(false)
-            },
-            None => Ok(true)
+            }
+            None => Ok(true),
         }
     }
     ///1. 获取令牌
     ///2. 检查count是否为0
     ///3. 制造数据
-    async fn add_batch(&mut self) -> crate::Result<bool>{
+    async fn add_batch(&mut self) -> crate::Result<bool> {
         // let mut watch = StopWatch::new();
         let mut num = 0;
         let mut arr = Vec::with_capacity(self.batch() + self.batch() / 4);
@@ -127,9 +130,8 @@ pub trait Exector: Send + Sync {
                             arr.push(data);
                         }
                     }
-
-                },
-                None => return Ok(true)
+                }
+                None => return Ok(true),
             }
         }
         if arr.len() == 0 {
@@ -174,7 +176,6 @@ pub trait Exector: Send + Sync {
             None => Ok(false),
         }
     }
-
 
     async fn execute(&mut self) -> crate::Result<bool> {
         if self.is_consumer() {

@@ -4,7 +4,6 @@ use serde_json::Value;
 
 use crate::datasource::Close;
 
-
 #[derive(Debug)]
 pub struct ClickHouseTask {
     pub name: String,

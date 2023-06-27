@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use super::{Close, DataSourceChannel, DataSourceEnum, ChannelContext};
+use super::{ChannelContext, Close, DataSourceChannel, DataSourceEnum};
 use crate::{
     core::{
         cli::Cli,
@@ -15,9 +15,11 @@ use crate::{
         shutdown::Shutdown,
     },
     model::{
-        schema::{ChannelSchema, DataSourceSchema}, column::DataSourceColumn,
+        column::DataSourceColumn,
+        schema::{ChannelSchema, DataSourceSchema},
     },
     task::{kafka::KafkaTask, Task},
+    Json,
 };
 use async_trait::async_trait;
 use rdkafka::{
@@ -56,16 +58,23 @@ pub struct KafkaArgs {
 }
 
 impl KafkaArgs {
-    pub fn from_value(meta: serde_json::Value, channel: ChannelSchema) -> Result<KafkaArgs> {
+    pub fn from_value(meta: Option<Json>, channel: Option<ChannelSchema>) -> Result<KafkaArgs> {
+        let meta = meta.unwrap_or(json!({
+        "host":"127.0.0.1",
+        "port": 9092
+        }));
+
+        let channel = channel.unwrap_or(ChannelSchema::default());
+
         Ok(KafkaArgs {
             host: meta["host"]
                 .as_str()
                 .ok_or(Error::Io(IoError::ArgNotFound("host".to_string())))?
                 .to_string(),
             port: meta["port"].as_u64().unwrap_or(3306) as u16,
-            batch: channel.batch,
-            count: channel.count,
-            concurrency: channel.concurrency,
+            batch: channel.batch.unwrap_or(1000),
+            count: channel.count.unwrap_or(usize::MAX),
+            concurrency: channel.concurrency.unwrap_or(usize::MAX),
             topic: meta["topic"]
                 .as_str()
                 .ok_or(Error::Io(IoError::ArgNotFound("topic".to_string())))?
@@ -165,7 +174,7 @@ impl DataSourceChannel for KafkaDataSource {
     fn sources(&self) -> Option<&Vec<String>> {
         return Some(&self.sources);
     }
-    
+
     fn columns_mut(&mut self, columns: Vec<DataSourceColumn>) {
         self.columns = columns;
     }
@@ -188,9 +197,9 @@ impl DataSourceChannel for KafkaDataSource {
 
     fn channel_schema(&self) -> Option<ChannelSchema> {
         return Some(ChannelSchema {
-            batch: self.args.batch,
-            concurrency: self.args.concurrency,
-            count: self.args.count,
+            batch: Some(self.args.batch),
+            concurrency: Some(self.args.concurrency),
+            count: Some(self.args.count),
         });
     }
 
@@ -222,7 +231,8 @@ impl DataSourceChannel for KafkaDataSource {
     }
 
     fn get_task(
-        &mut self, _channel: ChannelContext,
+        &mut self,
+        _channel: ChannelContext,
         columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
@@ -296,9 +306,8 @@ impl TryFrom<DataSourceSchema> for KafkaDataSource {
             name: value.name,
             args: KafkaArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
-            columns: DataSourceColumn::get_columns_from_schema(&value.columns),
-            sources: value.sources,
-            
+            columns: DataSourceColumn::get_columns_from_schema(&value.columns.unwrap_or(json!(0))),
+            sources: value.sources.unwrap_or(vec![]),
         })
     }
 }

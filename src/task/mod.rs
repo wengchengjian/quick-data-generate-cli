@@ -4,13 +4,12 @@ use crate::{core::shutdown::Shutdown, exec::Exector};
 
 pub mod clickhouse;
 pub mod csv;
+pub mod fake;
 pub mod kafka;
 pub mod mysql;
-pub mod fake;
 
 #[async_trait]
 pub trait Task: Send + Sync {
-
     fn shutdown(&mut self) -> &mut Shutdown;
 
     fn executor(&self) -> Box<dyn Exector>;

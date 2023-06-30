@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
+use serde_json::json;
 use structopt::StructOpt;
 
-use crate::datasource::DataSourceEnum;
+use crate::{datasource::DataSourceEnum, Json};
 
 #[derive(Debug, StructOpt, Clone)]
 #[structopt(
@@ -67,7 +68,7 @@ pub struct Cli {
     pub limit: Option<usize>,
 
     /// 是否跳过输出任务， 一般常用于只生成schema文件
-    #[structopt(short, long)]
+    #[structopt(long)]
     pub skip: bool,
 
     /// 本地输出文件参数

@@ -9,6 +9,7 @@ use crate::task::csv::CsvTask;
 use crate::task::Task;
 use crate::Json;
 use bytes::Buf;
+use serde::{Serialize, Deserialize};
 use serde_json::json;
 
 use std::io::Cursor;
@@ -226,7 +227,7 @@ impl Close for CsvDataSource {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct CsvArgs {
     pub filename: String,
 

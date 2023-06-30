@@ -18,14 +18,22 @@ use tokio::sync::{
 
 use crate::{
     core::{
-        fake::get_random_uuid, limit::token::TokenBuketLimiter, log::register, shutdown::Shutdown,
+        cli::Cli,
+        error::{Error, IoError},
+        fake::get_random_uuid,
+        limit::token::TokenBuketLimiter,
+        log::register,
+        shutdown::Shutdown,
     },
     model::{
         column::DataSourceColumn,
         schema::{ChannelSchema, DataSourceSchema, Schema},
     },
     task::Task,
+    Json,
 };
+
+use self::{csv::CsvArgs, kafka::KafkaArgs, mysql::MysqlArgs};
 
 pub mod clickhouse;
 pub mod csv;
@@ -45,6 +53,27 @@ pub enum DataSourceEnum {
     Csv,
     Fake, //
           //    SqlServer,
+}
+
+impl DataSourceEnum {
+    pub fn parse_meta_from_cli(&self, cli: Cli) -> crate::Result<Json> {
+        match self {
+            DataSourceEnum::Mysql => {
+                Ok(serde_json::to_value(TryInto::<MysqlArgs>::try_into(cli)?)
+                    .expect("json解析失败"))
+            }
+            DataSourceEnum::Kafka => {
+                Ok(serde_json::to_value(TryInto::<KafkaArgs>::try_into(cli)?)
+                    .expect("json解析失败"))
+            }
+            DataSourceEnum::Csv => {
+                Ok(serde_json::to_value(TryInto::<CsvArgs>::try_into(cli)?).expect("json解析失败"))
+            }
+            _ => {
+                return Err(Error::Io(IoError::UnkownSourceError("unkown".to_owned())));
+            }
+        }
+    }
 }
 
 impl FromStr for DataSourceEnum {
@@ -86,6 +115,7 @@ impl ChannelContext {
     }
 }
 
+#[derive(Clone)]
 pub struct DataSourceContext {
     pub limit: Option<usize>,
     pub skip: bool,
@@ -117,9 +147,9 @@ pub struct DelegatedDataSource {
 
 #[derive(Debug)]
 pub struct MpscDataSourceChannel {
-    pub producer: Vec<Box<dyn DataSourceChannel>>,
+    pub producer: Option<Vec<Box<dyn DataSourceChannel>>>,
 
-    pub consumer: Box<dyn DataSourceChannel>,
+    pub consumer: Option<Box<dyn DataSourceChannel>>,
 }
 
 impl MpscDataSourceChannel {
@@ -127,19 +157,10 @@ impl MpscDataSourceChannel {
         producer: Vec<Box<dyn DataSourceChannel>>,
         consumer: Box<dyn DataSourceChannel>,
     ) -> Self {
-        Self { producer, consumer }
-    }
-}
-
-#[async_trait]
-impl Close for MpscDataSourceChannel {
-    async fn close(&mut self) -> crate::Result<()> {
-        for ele in &mut self.producer {
-            ele.close().await?;
+        Self {
+            producer: Some(producer),
+            consumer: Some(consumer),
         }
-
-        self.consumer.close().await?;
-        Ok(())
     }
 }
 
@@ -159,22 +180,22 @@ impl DataSourceChannel for MpscDataSourceChannel {
         _chanel: ChannelContext,
     ) -> crate::Result<()> {
         let (tx, rx) = mpsc::channel(10000);
+        let producers = self.producer.take();
+        if let Some(producers) = producers {
+            for producer in producers {
+                let context = context.clone();
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    let mut context = context;
 
-        for producer in &mut self.producer {
-            producer.send(context, tx.clone()).await?;
+                    producer.send(&mut context, tx).await.unwrap();
+                });
+            }
         }
-        self.consumer.recv(context, rx).await?;
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl Close for DelegatedDataSource {
-    async fn close(&mut self) -> crate::Result<()> {
-        let datasources = &mut self.datasources;
-
-        for datasource in datasources {
-            datasource.close().await?;
+        if let Some(consumer) = self.consumer.take() {
+            tokio::spawn(async move {
+                consumer.recv(context, rx).await.unwrap();
+            });
         }
 
         Ok(())
@@ -224,7 +245,7 @@ impl DelegatedDataSource {
 }
 
 #[async_trait]
-pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
+pub trait DataSourceChannel: Send + Sync + fmt::Debug {
     fn need_log(&self) -> bool {
         return true;
     }
@@ -363,9 +384,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
         return None;
     }
 
-    fn is_shutdown(&self) -> bool {
-        return false;
-    }
+    fn shutdown(&self) -> &mut Shutdown;
 
     ///执行流程
     ///1. 获取字段定义
@@ -411,7 +430,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
             .map(|count| Arc::new(AtomicI64::new(count as i64)));
 
         let concurrency = Arc::new(Semaphore::new(self.concurrency()));
-        while !self.is_shutdown() {
+        while !self.shutdown().is_shutdown {
             // 检查数量
             if let Some(count) = count_rc.as_ref() {
                 if count.load(Ordering::SeqCst) <= 0 {
@@ -449,6 +468,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + Close {
                     //nothing
                 }
             }
+            self.shutdown().try_recv();
         }
 
         drop(notify_shutdown);

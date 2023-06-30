@@ -27,6 +27,7 @@ use rdkafka::{
     producer::FutureProducer,
     ClientConfig, Message,
 };
+use serde::{Serialize, Deserialize};
 use serde_json::json;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -42,7 +43,7 @@ pub struct KafkaDataSource {
     pub sources: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct KafkaArgs {
     pub host: String,
 

@@ -98,13 +98,27 @@ pub async fn execute(cli: Cli) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+fn get_schema_file_name(id: &str) -> String {
+    return format!("{}\\{}.{}", "schema", id, "json");
+}
+
+#[cfg(target_os = "linux")]
+fn get_schema_file_name(id: &str) -> String {
+    return format!("{}/{}.{}", "schema", id, "json");
+}
+
 async fn output_schema_to_dir(id: &str, schema: &Schema) -> PathBuf {
-    let filename = format!("/{}/{}.{}", "schema", id, "json");
+    let filename = get_schema_file_name(id);
 
     let mut path = home::home_dir().unwrap_or(PathBuf::from("./"));
-
     path.push(filename);
 
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            tokio::fs::create_dir(parent).await.unwrap();
+        }
+    }
     let as_path = path.clone();
 
     match serde_json::to_string_pretty(schema) {

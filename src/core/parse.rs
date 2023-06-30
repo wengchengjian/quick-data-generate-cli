@@ -166,19 +166,44 @@ pub fn parse_datasources_from_schema(schema: Schema) -> Result<Vec<Box<dyn DataS
     Ok(outputs)
 }
 
-pub fn parse_output_from_cli(cli: Cli) -> Option<Box<dyn DataSourceChannel>> {
-    let source_enum = cli.source;
-    match source_enum {
-        Some(source) => match source {
-            DataSourceEnum::Kafka => return KafkaDataSource::from_cli(cli).ok(),
-            DataSourceEnum::Mysql => return MysqlDataSource::from_cli(cli).ok(),
-            DataSourceEnum::Csv => return CsvDataSource::from_cli(cli).ok(),
-            DataSourceEnum::Fake => return None,
-        },
-        None => {
-            return None;
-        }
+pub fn parse_datasource_from_cli(cli: Cli) -> Result<Vec<Box<dyn DataSourceChannel>>> {
+    let schema = parse_schema_from_cli(cli)?;
+
+    return Ok(parse_datasources_from_schema(schema)?);
+}
+
+pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
+    if let None = cli.source {
+        return Err(Error::Io(IoError::ArgNotFound("source".to_owned())));
+    }
+
+    let mut sources = Vec::new();
+
+    let channel = Some(ChannelSchema {
+        batch: cli.batch,
+        concurrency: cli.concurrency,
+        count: cli.count,
+    });
+
+    let meta = cli.source.unwrap().parse_meta_from_cli(cli.clone())?;
+
+    let source = DataSourceSchema::new(
+        "default".to_owned(),
+        cli.source.unwrap(),
+        Some(meta),
+        None,
+        channel,
+        None,
+    );
+
+    sources.push(source);
+
+    let schema = Schema {
+        interval: cli.interval,
+        sources,
     };
+
+    return Ok(schema);
 }
 
 pub fn parse_schema_from_datasources(
@@ -235,9 +260,9 @@ pub fn parse_datasource(
     let limit = cli.limit;
     let skip = cli.skip;
 
-    if let Some(datasource) = parse_output_from_cli(cli) {
-        datasources.push(datasource);
-    }
+    let datasource = parse_datasource_from_cli(cli)?;
+    datasources.extend(datasource);
+
     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
 
     let schema = Schema::new(Some(interval), parse_schema_from_datasources(&datasources));

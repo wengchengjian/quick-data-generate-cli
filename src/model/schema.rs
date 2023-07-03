@@ -28,6 +28,8 @@ pub struct DataSourceSchema {
     pub channel: Option<ChannelSchema>,
 
     pub sources: Option<Vec<String>>,
+
+    pub runtime_args: Option<Json>
 }
 
 impl DataSourceSchema {
@@ -46,6 +48,7 @@ impl DataSourceSchema {
             columns,
             channel,
             sources,
+            runtime_args: None
         }
     }
 
@@ -61,6 +64,7 @@ impl DataSourceSchema {
                 count: Some(usize::MAX),
             }),
             sources: None,
+            runtime_args: None
         }
     }
 }

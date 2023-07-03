@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use std::vec;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, RwLock};
 
 use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
@@ -247,22 +247,21 @@ impl super::DataSourceChannel for MysqlDataSource {
         }
     }
 
-    async fn before_run(
-        &mut self,
-        _context: &mut DataSourceContext,
-        _channel: ChannelContext,
-    ) -> crate::Result<()> {
-        // TODO 可以在这里建表之类的
-        Ok(())
-    }
-
     async fn after_run(
         &mut self,
-        _context: &mut DataSourceContext,
+        _context: Arc<RwLock<DataSourceContext>>,
         _channel: ChannelContext,
     ) -> crate::Result<()> {
         for pool in self.pool_cache.values() {
             let _ = pool.to_owned().disconnect().await;
+        }
+        if self.need_log() {
+            //更新状态
+            DATA_SOURCE_MANAGER.write().await.update_final_status(
+                self.name(),
+                DataSourceChannelStatus::Ended,
+                false,
+            );
         }
         Ok(())
     }
@@ -305,10 +304,6 @@ impl super::DataSourceChannel for MysqlDataSource {
         );
         return Some(Box::new(task));
     }
-
-    fn is_shutdown(&self) -> bool {
-        return self.shutdown.load(Ordering::SeqCst);
-    }
 }
 
 #[async_trait]
@@ -340,7 +335,10 @@ pub struct MysqlArgs {
     pub concurrency: usize,
 }
 
-use super::{ChannelContext, Close, DataSourceChannel, DataSourceContext, DataSourceEnum};
+use super::{
+    ChannelContext, Close, DataSourceChannel, DataSourceChannelStatus, DataSourceContext,
+    DataSourceEnum, DATA_SOURCE_MANAGER,
+};
 
 #[derive(Debug)]
 pub struct MysqlDataSource {

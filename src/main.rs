@@ -1,19 +1,22 @@
 use crate::core::parse::parse_datasource;
 
-use crate::core::parse::parse_mpsc_from_schema;
+use crate::datasource::DATA_SOURCE_MANAGER;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::core::error::{Error, IoError};
 
 use crate::core::cli::Cli;
 use crate::core::error::Result;
 use crate::core::log::{StaticsLogger, STATICS_LOGGER};
-use crate::datasource::{ChannelContext, Close, DataSourceChannel};
+use crate::datasource::{ChannelContext, DataSourceChannel};
 use datasource::{DataSourceContext, DelegatedDataSource};
 use model::schema::Schema;
 use structopt::StructOpt;
 
 use tokio::signal;
+use tokio::sync::RwLock;
 // use tracing::{error, info, Level};
 // use tracing_subscriber::FmtSubscriber;
 pub mod core;
@@ -72,15 +75,17 @@ pub async fn execute(cli: Cli) -> Result<()> {
         STATICS_LOGGER = Some(StaticsLogger::new(0));
     }
 
-    let (mut datasource, mut context) = create_delegate_output(cli).await?;
+    let (mut datasource, context) = create_delegate_output(cli).await?;
     let channel = ChannelContext::new(None, None);
+    let context = Arc::new(RwLock::new(context));
+    let context_rc = context.clone();
+    datasource.execute(context_rc, channel).await?;
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let mut done = false;
     tokio::select! {
-        result = datasource.execute(&mut context, channel) => {
-            if let Err(err) = result {
-                println!("execute error: {}", err);
-            } else {
-                println!("\nquick-data-generator is exiting...");
-            }
+        _ = await_all_done() => {
+            done = true;
         }
         _ = StaticsLogger::log() => {
             println!("\nlogger is exiting...");
@@ -89,13 +94,21 @@ pub async fn execute(cli: Cli) -> Result<()> {
             println!("\nreceived stop signal, exiting...");
         }
     }
+    let context = context.read().await;
     //输出schema,以便修正或重复利用
     let path = output_schema_to_dir(&context.id, &context.schema).await;
     println!("schema文件输出至: {:?}", path);
-    // 关闭任务
-    datasource.close().await?;
-
+    if !done {
+        // 关闭所有任务
+        DATA_SOURCE_MANAGER.write().await.stop_all_task();
+        // 等待所有任务关闭
+        DATA_SOURCE_MANAGER.read().await.await_all_done().await;
+    }
     Ok(())
+}
+
+async fn await_all_done() {
+    DATA_SOURCE_MANAGER.read().await.await_all_done().await
 }
 
 #[cfg(target_os = "windows")]

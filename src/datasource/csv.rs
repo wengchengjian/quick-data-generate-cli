@@ -22,7 +22,7 @@ use tokio::fs::File;
 
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, RwLock};
 
 impl CsvDataSource {
     pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
@@ -114,7 +114,7 @@ impl super::DataSourceChannel for CsvDataSource {
 
     async fn before_run(
         &mut self,
-        _context: &mut DataSourceContext,
+        _context: Arc<RwLock<DataSourceContext>>,
         _channel: ChannelContext,
     ) -> crate::Result<()> {
         //注册日志
@@ -212,10 +212,6 @@ impl super::DataSourceChannel for CsvDataSource {
             count_rc,
         );
         return Some(Box::new(task));
-    }
-
-    fn is_shutdown(&self) -> bool {
-        return self.shutdown.load(Ordering::SeqCst);
     }
 }
 

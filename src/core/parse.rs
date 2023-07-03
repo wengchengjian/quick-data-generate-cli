@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::{
-    check::{DEFAULT_INTERVAL, MIN_THREAD_SIZE},
+    check::DEFAULT_INTERVAL,
     cli::Cli,
     error::{Error, IoError, Result},
 };
@@ -15,7 +15,7 @@ use crate::{
     },
     impl_func_is_primitive_by_parse,
     model::{
-        column::{DataSourceColumn, DataTypeEnum, FixedValue},
+        column::{DataTypeEnum, FixedValue},
         schema::{ChannelSchema, DataSourceSchema, Schema},
     },
     Json,
@@ -95,9 +95,9 @@ pub fn parse_datasource_from_schema(
         DataSourceEnum::Kafka => Ok(Box::new(KafkaDataSource::try_from(schema)?)),
         DataSourceEnum::Csv => Ok(Box::new(CsvDataSource::try_from(schema)?)),
         DataSourceEnum::Fake => Ok(Box::new(FakeDataSource::new(schema))),
-        _ => {
-            return Err(Error::Io(IoError::UnkownSourceError("source".to_owned())));
-        }
+        //        _ => {
+        //            return Err(Error::Io(IoError::UnkownSourceError("source".to_owned())));
+        //        }
     }
 }
 

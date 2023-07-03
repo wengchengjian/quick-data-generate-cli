@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicI64, Ordering},
+        atomic::{AtomicBool, AtomicI64},
         Arc,
     },
     time::Duration,
@@ -259,10 +259,6 @@ impl DataSourceChannel for KafkaDataSource {
                 return None;
             }
         }
-    }
-
-    fn is_shutdown(&self) -> bool {
-        return self.shutdown.load(Ordering::SeqCst);
     }
 }
 

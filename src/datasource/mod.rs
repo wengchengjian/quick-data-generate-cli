@@ -1,10 +1,12 @@
 use core::fmt;
 use std::{
+    collections::HashMap,
     str::FromStr,
     sync::{
         atomic::{AtomicI64, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -13,7 +15,7 @@ use serde_json::json;
 use tokio::sync::{
     broadcast,
     mpsc::{self, Receiver, Sender},
-    Mutex, Semaphore,
+    Mutex, RwLock, Semaphore,
 };
 
 use crate::{
@@ -26,7 +28,7 @@ use crate::{
         shutdown::Shutdown,
     },
     model::{
-        column::DataSourceColumn,
+        column::{parse_json_from_column, DataSourceColumn},
         schema::{ChannelSchema, DataSourceSchema, Schema},
     },
     task::Task,
@@ -164,6 +166,153 @@ impl MpscDataSourceChannel {
     }
 }
 
+lazy_static! {
+    pub static ref DATA_SOURCE_MANAGER: Arc<RwLock<DataSourceManager>> =
+        Arc::new(RwLock::new(DataSourceManager::new()));
+}
+
+pub struct DataSourceManager {
+    pub final_status: HashMap<String, DataSourceChannelStatus>,
+    pub will_status: HashMap<String, DataSourceChannelStatus>,
+    pub schemas: HashMap<String, DataSourceSchema>,
+}
+
+impl DataSourceManager {
+    pub fn new() -> Self {
+        Self {
+            final_status: HashMap::new(),
+            will_status: HashMap::new(),
+            schemas: HashMap::new(),
+        }
+    }
+
+    pub fn put_schema(&mut self, name: &str, schema: DataSourceSchema) -> Option<DataSourceSchema> {
+        return self.schemas.insert(name.to_owned(), schema);
+    }
+
+    pub fn get_schema(&self, name: &str) -> Option<&DataSourceSchema> {
+        return self.schemas.get(name);
+    }
+
+    pub fn get_schema_mut(&mut self, name: &str) -> Option<&mut DataSourceSchema> {
+        return self.schemas.get_mut(name);
+    }
+
+    ///更新will数据源状态,返回之前的状态
+    pub fn update_will_status(
+        &mut self,
+        name: &str,
+        status: DataSourceChannelStatus,
+    ) -> Option<DataSourceChannelStatus> {
+        self.will_status.insert(name.to_owned(), status)
+    }
+
+    pub fn notify_update_sources(&mut self, name: &str) {
+        self.get_schema(name).is_some_and(|schema| {
+            schema.sources.as_ref().is_some_and(|sources| {
+                let needs_update_schema = Vec::new();
+                for source in sources {
+                    self.get_schema(source).is_some_and(|source_schema| {
+                        needs_update_schema.push(source_schema);
+                        return true;
+                    });
+                }
+
+                
+
+                return true;
+            })
+        });
+    }
+
+    ///更新will数据源状态,返回之前的状态, 若存在最终状态则不更新
+    pub fn update_final_status(
+        &mut self,
+        name: &str,
+        status: DataSourceChannelStatus,
+        overide: bool,
+    ) -> Option<DataSourceChannelStatus> {
+        match self.final_status.get(name) {
+            Some(old_status) => {
+                if overide {
+                    return self.final_status.insert(name.to_owned(), status);
+                } else {
+                    match old_status {
+                        DataSourceChannelStatus::Starting => {
+                            return self.final_status.insert(name.to_owned(), status)
+                        }
+                        DataSourceChannelStatus::Running => {
+                            return self.final_status.insert(name.to_owned(), status)
+                        }
+                        DataSourceChannelStatus::Stopped(_) => return None,
+                        DataSourceChannelStatus::Terminated(_) => return None,
+                        DataSourceChannelStatus::Inited => {
+                            return self.final_status.insert(name.to_owned(), status)
+                        }
+                        DataSourceChannelStatus::Ended => return None,
+                    }
+                }
+            }
+            None => return self.final_status.insert(name.to_owned(), status),
+        }
+    }
+
+    pub fn is_shutdown(&self, name: &str) -> bool {
+        match self.will_status.get(name).map(Self::is_shutdown_self) {
+            Some(shut) => return shut,
+            None => return false,
+        }
+    }
+
+    pub fn is_shutdown_self(source: &DataSourceChannelStatus) -> bool {
+        match source {
+            DataSourceChannelStatus::Stopped(_) => true,
+            DataSourceChannelStatus::Ended => true,
+            DataSourceChannelStatus::Terminated(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn stop_all_task(&mut self) {
+        let keys = self.will_status.values_mut();
+        for key in keys {
+            *key = DataSourceChannelStatus::Stopped("手动关闭任务".to_owned());
+        }
+    }
+
+    /// 等待所有任务完成
+    pub async fn await_all_done(&self) {
+        loop {
+            let mut count = self.final_status.values().len();
+
+            for val in self.final_status.values() {
+                match val {
+                    DataSourceChannelStatus::Running => continue,
+                    DataSourceChannelStatus::Stopped(_) => count -= 1,
+                    DataSourceChannelStatus::Terminated(_) => count -= 1,
+                    DataSourceChannelStatus::Inited => continue,
+                    DataSourceChannelStatus::Ended => count -= 1,
+                    DataSourceChannelStatus::Starting => continue,
+                }
+            }
+
+            if count == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await
+        }
+    }
+}
+
+pub enum DataSourceChannelStatus {
+    Starting,
+    Running,
+    Stopped(String),
+    Terminated(String),
+    Inited,
+    Ended,
+}
+
 #[async_trait]
 impl DataSourceChannel for MpscDataSourceChannel {
     fn need_log(&self) -> bool {
@@ -176,23 +325,21 @@ impl DataSourceChannel for MpscDataSourceChannel {
 
     async fn run(
         &mut self,
-        context: &mut DataSourceContext,
+        context: Arc<RwLock<DataSourceContext>>,
         _chanel: ChannelContext,
     ) -> crate::Result<()> {
         let (tx, rx) = mpsc::channel(10000);
         let producers = self.producer.take();
         if let Some(producers) = producers {
-            for producer in producers {
+            for mut producer in producers {
                 let context = context.clone();
                 let tx = tx.clone();
                 tokio::spawn(async move {
-                    let mut context = context;
-
-                    producer.send(&mut context, tx).await.unwrap();
+                    producer.send(context, tx).await.unwrap();
                 });
             }
         }
-        if let Some(consumer) = self.consumer.take() {
+        if let Some(mut consumer) = self.consumer.take() {
             tokio::spawn(async move {
                 consumer.recv(context, rx).await.unwrap();
             });
@@ -213,12 +360,13 @@ impl DataSourceChannel for DelegatedDataSource {
 
     async fn run(
         &mut self,
-        context: &mut DataSourceContext,
+        context: Arc<RwLock<DataSourceContext>>,
         _channel: ChannelContext,
     ) -> crate::Result<()> {
         let datasources = &mut self.datasources;
         let channel = ChannelContext::new(None, None);
         for datasource in datasources {
+            let context = context.clone();
             let channel = channel.clone();
             datasource.execute(context, channel).await?;
         }
@@ -238,7 +386,7 @@ impl DelegatedDataSource {
     pub async fn start_output(
         &mut self,
         output: &mut Box<dyn DataSourceChannel>,
-        context: &mut DataSourceContext,
+        context: Arc<RwLock<DataSourceContext>>,
     ) -> crate::Result<()> {
         output.run(context, ChannelContext::new(None, None)).await
     }
@@ -251,43 +399,90 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug {
     }
 
     /// 通用初始化逻辑
-    async fn init(&mut self, _context: &mut DataSourceContext, _channel: ChannelContext) {
+    async fn init(&mut self, _context: Arc<RwLock<DataSourceContext>>, _channel: ChannelContext) {
         //注册日志
         if self.need_log() {
             register(&self.name().clone()).await;
+            //更新状态
+            DATA_SOURCE_MANAGER.write().await.update_final_status(
+                self.name(),
+                DataSourceChannelStatus::Inited,
+                false,
+            );
         }
     }
 
     async fn before_run(
         &mut self,
-        _context: &mut DataSourceContext,
+        _context: Arc<RwLock<DataSourceContext>>,
         _channel: ChannelContext,
     ) -> crate::Result<()> {
+        if self.need_log() {
+            DATA_SOURCE_MANAGER.write().await.update_final_status(
+                self.name(),
+                DataSourceChannelStatus::Starting,
+                false,
+            );
+        }
+
         Ok(())
     }
 
     async fn after_run(
         &mut self,
-        _context: &mut DataSourceContext,
+        _context: Arc<RwLock<DataSourceContext>>,
         _channel: ChannelContext,
     ) -> crate::Result<()> {
+        if self.need_log() {
+            //更新状态
+            DATA_SOURCE_MANAGER.write().await.update_final_status(
+                self.name(),
+                DataSourceChannelStatus::Ended,
+                false,
+            );
+        }
+
         Ok(())
     }
 
     async fn execute(
         &mut self,
-        context: &mut DataSourceContext,
+        context: Arc<RwLock<DataSourceContext>>,
         channel: ChannelContext,
     ) -> crate::Result<()> {
-        self.init(context, channel.clone()).await;
-        self.before_run(context, channel.clone()).await?;
-        self.run(context, channel.clone()).await?;
-        self.after_run(context, channel.clone()).await
+        let context_rc = context.clone();
+        self.init(context_rc, channel.clone()).await;
+        let context_rc = context.clone();
+        match self.before_run(context_rc, channel.clone()).await {
+            Ok(()) => {
+                let context_rc = context.clone();
+
+                match self.run(context_rc, channel.clone()).await {
+                    Ok(_) => return self.after_run(context, channel.clone()).await,
+                    Err(e) => {
+                        DATA_SOURCE_MANAGER.write().await.update_final_status(
+                            self.name(),
+                            DataSourceChannelStatus::Terminated(format!("程序异常终止:{}", e)),
+                            false,
+                        );
+                        return Err(e);
+                    }
+                }
+            }
+            Err(e) => {
+                DATA_SOURCE_MANAGER.write().await.update_final_status(
+                    self.name(),
+                    DataSourceChannelStatus::Terminated(format!("程序异常终止:{}", e)),
+                    false,
+                );
+                return Err(e);
+            }
+        };
     }
 
     async fn send(
         &mut self,
-        context: &mut DataSourceContext,
+        context: Arc<RwLock<DataSourceContext>>,
         sender: Sender<serde_json::Value>,
     ) -> crate::Result<()> {
         let channel_context = ChannelContext::new(Some(sender), None);
@@ -297,7 +492,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug {
 
     async fn recv(
         &mut self,
-        context: &mut DataSourceContext,
+        context: Arc<RwLock<DataSourceContext>>,
         receiver: Receiver<serde_json::Value>,
     ) -> crate::Result<()> {
         let channel_context = ChannelContext::new(None, Some(receiver));
@@ -334,16 +529,11 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug {
                     Some(source_type) => source_type,
                     None => return None,
                 },
+                runtime_args: None,
                 sources: Some(Vec::new()),
                 meta: self.meta(),
                 columns: match self.columns() {
-                    Some(columns) => {
-                        let mut res = json!({});
-                        for column in columns {
-                            res[&column.name] = json!(column.data_type().to_string());
-                        }
-                        Some(res)
-                    }
+                    Some(columns) => Some(parse_json_from_column(&columns)),
                     None => return None,
                 },
                 channel: Some(channel_schema),
@@ -384,17 +574,21 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug {
         return None;
     }
 
-    fn shutdown(&self) -> &mut Shutdown;
-
     ///执行流程
     ///1. 获取字段定义
     ///2. 生成输出任务
     ///3. 等待任务执行完毕
     async fn run(
         &mut self,
-        context: &mut DataSourceContext,
+        context: Arc<RwLock<DataSourceContext>>,
         channel: ChannelContext,
     ) -> crate::Result<()> {
+        DATA_SOURCE_MANAGER.write().await.update_final_status(
+            self.name(),
+            DataSourceChannelStatus::Running,
+            false,
+        );
+
         // 获取字段定义
         let columns = self.get_columns_define().await.unwrap_or(vec![]);
 
@@ -404,24 +598,39 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug {
 
         // 合并两个数组
         let columns = DataSourceColumn::merge_columns(&columns, &schema_columns);
-        self.columns_mut(columns.clone());
+        match DATA_SOURCE_MANAGER
+            .write()
+            .await
+            .get_schema_mut(self.name())
+        {
+            Some(schema) => {
+                // 更新columns
+                schema.columns = Some(parse_json_from_column(&columns));
+                notify_update_sources(self.name());
+            }
+            None => {
+                return Err(Error::Io(IoError::ParseSchemaError));
+            }
+        }
 
         match self.transfer_to_schema() {
             Some(schema) => {
-                context.schema.sources.push(schema);
+                context.write().await.schema.sources.push(schema);
             }
             None => {
                 println!("不能解析output的schema");
             }
         }
 
-        if context.skip {
+        if context.read().await.skip {
             return Ok(());
         }
         let (notify_shutdown, _) = broadcast::channel::<()>(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel::<()>(1);
         println!("{} will running...", self.name());
         let limiter = context
+            .read()
+            .await
             .limit
             .map(|limit| Arc::new(Mutex::new(TokenBuketLimiter::new(limit, limit * 2))));
 
@@ -430,7 +639,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug {
             .map(|count| Arc::new(AtomicI64::new(count as i64)));
 
         let concurrency = Arc::new(Semaphore::new(self.concurrency()));
-        while !self.shutdown().is_shutdown {
+        while !DATA_SOURCE_MANAGER.read().await.is_shutdown(self.name()) {
             // 检查数量
             if let Some(count) = count_rc.as_ref() {
                 if count.load(Ordering::SeqCst) <= 0 {
@@ -468,14 +677,12 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug {
                     //nothing
                 }
             }
-            self.shutdown().try_recv();
         }
 
         drop(notify_shutdown);
         drop(shutdown_complete_tx);
         // 等待所有的task执行完毕
         let _ = shutdown_complete_rx.recv().await;
-
         Ok(())
     }
 }

@@ -2,7 +2,6 @@ use serde_json::json;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
-use std::vec;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::core::error::Result;
@@ -93,10 +92,6 @@ impl super::DataSourceChannel for FakeDataSource {
             channel,
         );
         return Some(Box::new(task));
-    }
-
-    fn is_shutdown(&self) -> bool {
-        return self.shutdown.load(Ordering::SeqCst);
     }
 }
 

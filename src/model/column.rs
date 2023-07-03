@@ -1,16 +1,28 @@
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 
-use crate::core::{
-    error::{Error, IoError, Result},
-    parse::parse_type,
+use crate::{
+    core::{
+        error::{Error, IoError, Result},
+        parse::parse_type,
+    },
+    Json,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DataSourceColumn {
     pub name: String,
     pub data_type: DataTypeEnum,
+}
+
+pub fn parse_json_from_column(columns: &Vec<DataSourceColumn>) -> Json {
+    let mut res = json!({});
+    for column in columns {
+        res[&column.name] = json!(column.data_type().to_string());
+    }
+    res
 }
 
 impl DataSourceColumn {

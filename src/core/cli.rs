@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 
-use serde_json::json;
 use structopt::StructOpt;
 
-use crate::{datasource::DataSourceEnum, Json};
+use crate::{datasource::DataSourceEnum};
 
 #[derive(Debug, StructOpt, Clone)]
 #[structopt(

@@ -3,13 +3,14 @@ use crate::core::error::{Error, IoError, Result};
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::log::register;
 use crate::core::shutdown::Shutdown;
+use crate::core::traits::{Name, TaskDetailStatic};
 use crate::model::column::DataSourceColumn;
 use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::csv::CsvTask;
 use crate::task::Task;
 use crate::Json;
 use bytes::Buf;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use std::io::Cursor;
@@ -67,7 +68,7 @@ impl CsvArgs {
         Ok(CsvArgs {
             filename: meta["filename"]
                 .as_str()
-                .ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("database")))?
                 .to_string(),
 
             batch: channel.batch.unwrap_or(1000),
@@ -106,12 +107,16 @@ impl TryFrom<DataSourceSchema> for CsvDataSource {
 
 use async_trait::async_trait;
 
+impl Name for CsvDataSource {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl TaskDetailStatic for CsvDataSource {}
+
 #[async_trait]
 impl super::DataSourceChannel for CsvDataSource {
-    fn sources(&self) -> Option<&Vec<String>> {
-        return Some(&self.sources);
-    }
-
     async fn before_run(
         &mut self,
         _context: Arc<RwLock<DataSourceContext>>,
@@ -144,59 +149,13 @@ impl super::DataSourceChannel for CsvDataSource {
         Ok(())
     }
 
-    fn columns_mut(&mut self, columns: Vec<DataSourceColumn>) {
-        self.columns = columns;
-    }
-
-    fn source_type(&self) -> Option<DataSourceEnum> {
-        return Some(DataSourceEnum::Csv);
-    }
-
-    fn batch(&self) -> Option<usize> {
-        return Some(self.args.batch);
-    }
-
-    fn meta(&self) -> Option<serde_json::Value> {
-        return Some(json!({
-            "filename": self.args.filename
-        }));
-    }
-
-    fn channel_schema(&self) -> Option<ChannelSchema> {
-        return Some(ChannelSchema {
-            batch: Some(self.args.batch),
-            concurrency: Some(self.args.concurrency),
-            count: Some(self.args.count),
-        });
-    }
-
-    fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
-        return Some(&self.columns);
-    }
-
-    fn concurrency(&self) -> usize {
-        return self.args.concurrency;
-    }
-
-    fn name(&self) -> &str {
-        return &self.name;
-    }
-
-    fn count(&self) -> Option<usize> {
-        match self.args.count {
-            0 => None,
-            x => Some(x),
-        }
-    }
-
     async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
         return None;
     }
 
-    fn get_task(
+    async fn get_task(
         &mut self,
         _channel: ChannelContext,
-        columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
@@ -204,22 +163,12 @@ impl super::DataSourceChannel for CsvDataSource {
     ) -> Option<Box<dyn Task>> {
         let task = CsvTask::from_args(
             self.name.clone(),
-            &self.args,
-            columns,
             shutdown_complete_tx,
             shutdown,
             limiter,
             count_rc,
         );
         return Some(Box::new(task));
-    }
-}
-
-#[async_trait]
-impl Close for CsvDataSource {
-    async fn close(&mut self) -> Result<()> {
-        self.shutdown.store(true, Ordering::SeqCst);
-        Ok(())
     }
 }
 
@@ -234,7 +183,7 @@ pub struct CsvArgs {
     pub concurrency: usize,
 }
 
-use super::{ChannelContext, Close, DataSourceChannel, DataSourceContext, DataSourceEnum};
+use super::{ChannelContext, DataSourceChannel, DataSourceContext, DataSourceEnum};
 
 #[derive(Debug)]
 pub struct CsvDataSource {

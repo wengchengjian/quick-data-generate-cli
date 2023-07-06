@@ -3,29 +3,31 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::{
-    core::shutdown::Shutdown,
-    datasource::{fake::FakeArgs, ChannelContext, Close},
+    core::{
+        shutdown::Shutdown,
+        traits::{Name, TaskDetailStatic},
+    },
+    datasource::{fake::FakeArgs, ChannelContext},
     exec::{fake::FakeTaskExecutor, Exector},
     model::column::DataSourceColumn,
 };
 
 use super::Task;
 
+impl Name for FakeTask {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl TaskDetailStatic for FakeTask {}
+
 #[derive(Debug)]
 pub struct FakeTask {
     pub name: String,
-    pub batch: usize,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
-    pub columns: Vec<DataSourceColumn>,
     pub executor: FakeTaskExecutor,
-}
-#[async_trait]
-impl Close for FakeTask {
-    async fn close(&mut self) -> crate::Result<()> {
-        // 判断任务是否完成
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -42,21 +44,16 @@ impl Task for FakeTask {
 impl FakeTask {
     pub fn from_args(
         name: String,
-        args: &FakeArgs,
-        columns: Vec<DataSourceColumn>,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
         channel: ChannelContext,
     ) -> Self {
-        let columns2 = columns.clone();
         let name2 = name.clone();
         Self {
             name,
-            batch: args.batch,
             shutdown_sender,
             shutdown,
-            columns,
-            executor: FakeTaskExecutor::new(args.batch, columns2, name2, channel.sender),
+            executor: FakeTaskExecutor::new(name2, channel.sender),
         }
     }
 }

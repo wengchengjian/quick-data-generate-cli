@@ -47,8 +47,8 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-pub fn create_context(limit: Option<usize>, skip: bool, schema: Schema) -> DataSourceContext {
-    return DataSourceContext::new(limit, skip, schema);
+pub fn create_context(limit: Option<usize>, skip: bool) -> DataSourceContext {
+    return DataSourceContext::new(limit, skip);
 }
 
 /// 创建代理输出任务
@@ -95,20 +95,21 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
     }
     let context = context.read().await;
+    let schema = Schema::new(Some(5), DATA_SOURCE_MANAGER.get_all_schema());
     //输出schema,以便修正或重复利用
-    let path = output_schema_to_dir(&context.id, &context.schema).await;
+    let path = output_schema_to_dir(&context.id, &schema).await;
     println!("schema文件输出至: {:?}", path);
     if !done {
         // 关闭所有任务
-        DATA_SOURCE_MANAGER.write().await.stop_all_task();
+        DATA_SOURCE_MANAGER.stop_all_task();
         // 等待所有任务关闭
-        DATA_SOURCE_MANAGER.read().await.await_all_done().await;
+        DATA_SOURCE_MANAGER.await_all_done().await;
     }
     Ok(())
 }
 
 async fn await_all_done() {
-    DATA_SOURCE_MANAGER.read().await.await_all_done().await
+    DATA_SOURCE_MANAGER.await_all_done().await
 }
 
 #[cfg(target_os = "windows")]

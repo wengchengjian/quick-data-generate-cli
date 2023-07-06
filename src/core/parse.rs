@@ -174,7 +174,7 @@ pub fn parse_datasource_from_cli(cli: Cli) -> Result<Vec<Box<dyn DataSourceChann
 
 pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
     if let None = cli.source {
-        return Err(Error::Io(IoError::ArgNotFound("source".to_owned())));
+        return Err(Error::Io(IoError::ArgNotFound("source")));
     }
 
     let mut sources = Vec::new();
@@ -204,21 +204,6 @@ pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
     };
 
     return Ok(schema);
-}
-
-pub fn parse_schema_from_datasources(
-    datasources: &Vec<Box<dyn DataSourceChannel>>,
-) -> Vec<DataSourceSchema> {
-    let mut res = vec![];
-
-    for datasource in datasources {
-        match datasource.transfer_to_schema() {
-            Some(schema) => res.push(schema),
-            None => continue,
-        };
-    }
-
-    return res;
 }
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
@@ -265,8 +250,7 @@ pub fn parse_datasource(
 
     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
 
-    let schema = Schema::new(Some(interval), parse_schema_from_datasources(&datasources));
-    let context = create_context(limit, skip, schema);
+    let context = create_context(limit, skip);
 
     return Ok((datasources, interval, context));
 }

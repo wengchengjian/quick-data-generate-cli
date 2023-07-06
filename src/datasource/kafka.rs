@@ -6,13 +6,14 @@ use std::{
     time::Duration,
 };
 
-use super::{ChannelContext, Close, DataSourceChannel, DataSourceEnum};
+use super::{ChannelContext, DataSourceChannel, DataSourceEnum, DATA_SOURCE_MANAGER};
 use crate::{
     core::{
         cli::Cli,
         error::{Error, IoError, Result},
         limit::token::TokenBuketLimiter,
         shutdown::Shutdown,
+        traits::{Name, TaskDetailStatic},
     },
     model::{
         column::DataSourceColumn,
@@ -27,7 +28,7 @@ use rdkafka::{
     producer::FutureProducer,
     ClientConfig, Message,
 };
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -37,10 +38,6 @@ use tokio::{
 #[derive(Debug)]
 pub struct KafkaDataSource {
     pub name: String,
-    pub args: KafkaArgs,
-    pub shutdown: AtomicBool,
-    pub columns: Vec<DataSourceColumn>,
-    pub sources: Vec<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -70,7 +67,7 @@ impl KafkaArgs {
         Ok(KafkaArgs {
             host: meta["host"]
                 .as_str()
-                .ok_or(Error::Io(IoError::ArgNotFound("host".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("host")))?
                 .to_string(),
             port: meta["port"].as_u64().unwrap_or(3306) as u16,
             batch: channel.batch.unwrap_or(1000),
@@ -78,7 +75,7 @@ impl KafkaArgs {
             concurrency: channel.concurrency.unwrap_or(usize::MAX),
             topic: meta["topic"]
                 .as_str()
-                .ok_or(Error::Io(IoError::ArgNotFound("topic".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("topic")))?
                 .to_string(),
         })
     }
@@ -87,8 +84,8 @@ impl KafkaArgs {
 pub static DEFAULT_GROUP: &'static str = "vFBiQ6aasB";
 
 impl KafkaDataSource {
-    pub fn get_provider(&self) -> Result<FutureProducer> {
-        let host = format!("{}:{}", self.args.host, self.args.port);
+    pub async fn get_provider(&self) -> Result<FutureProducer> {
+        let host = format!("{}:{}", self.host().await, self.port().await);
         return ClientConfig::new()
             .set("bootstrap.servers", host)
             .set("message.timeout.ms", "10000")
@@ -134,12 +131,25 @@ impl KafkaDataSource {
         }
     }
 
-    pub fn get_consumer(
+    pub async fn host(&self) -> String {
+        self.meta().await.unwrap_or(&json!({}))["host"]
+            .as_str()
+            .unwrap_or("localhost")
+            .to_owned()
+    }
+
+    pub async fn port(&self) -> u64 {
+        self.meta().await.unwrap_or(&json!({}))["port"]
+            .as_u64()
+            .unwrap_or(9092)
+    }
+
+    pub async fn get_consumer(
         &self,
         group: String,
         topics: &[&str],
     ) -> Result<StreamConsumer<DefaultConsumerContext>> {
-        let host = format!("{}:{}", self.args.host, self.args.port);
+        let host = format!("{}:{}", self.host().await, self.port().await);
         let consumer: StreamConsumer<DefaultConsumerContext> = ClientConfig::new()
             .set("group.id", group)
             .set("bootstrap.servers", host)
@@ -160,94 +170,56 @@ impl KafkaDataSource {
     pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = KafkaDataSource {
             name: "kafka".into(),
-            args: cli.try_into()?,
-            shutdown: AtomicBool::new(false),
-            columns: vec![],
-            sources: vec!["fake_data_source".to_owned()],
         };
 
         Ok(Box::new(res))
     }
 }
 
+impl Name for KafkaDataSource {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl TaskDetailStatic for KafkaDataSource {}
+
 #[async_trait]
 impl DataSourceChannel for KafkaDataSource {
-    fn sources(&self) -> Option<&Vec<String>> {
-        return Some(&self.sources);
-    }
-
-    fn columns_mut(&mut self, columns: Vec<DataSourceColumn>) {
-        self.columns = columns;
-    }
-
-    fn source_type(&self) -> Option<DataSourceEnum> {
-        return Some(DataSourceEnum::Kafka);
-    }
-
-    fn batch(&self) -> Option<usize> {
-        return Some(self.args.batch);
-    }
-
-    fn meta(&self) -> Option<serde_json::Value> {
-        return Some(json!({
-            "host": self.args.host,
-            "port": self.args.port,
-            "topic": self.args.topic
-        }));
-    }
-
-    fn channel_schema(&self) -> Option<ChannelSchema> {
-        return Some(ChannelSchema {
-            batch: Some(self.args.batch),
-            concurrency: Some(self.args.concurrency),
-            count: Some(self.args.count),
-        });
-    }
-
-    fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
-        return Some(&self.columns);
-    }
-
-    fn concurrency(&self) -> usize {
-        return self.args.concurrency;
-    }
-
-    fn name(&self) -> &str {
-        return &self.name;
-    }
-
     async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
-        let topic = self.args.topic.as_str();
-        let ref topics = vec![topic];
-        match self.get_consumer(DEFAULT_GROUP.to_string(), topics) {
-            Ok(consumer) => {
-                // 获取字段定义
-                let columns = KafkaDataSource::get_columns_define(consumer).await;
-                return Some(columns);
-            }
-            Err(_) => {
-                return None;
+        if let Some(schema) = DATA_SOURCE_MANAGER.get_schema(self.name()).await {
+            if let Some(topic) = self.meta().await.unwrap_or(&json!({}))["topic"].as_str() {
+                let ref topics = vec![topic];
+                match self.get_consumer(DEFAULT_GROUP.to_string(), topics).await {
+                    Ok(consumer) => {
+                        // 获取字段定义
+                        let columns = KafkaDataSource::get_columns_define(consumer).await;
+                        return Some(columns);
+                    }
+                    Err(_) => {
+                        return None;
+                    }
+                }
             }
         }
+
+        None
     }
 
-    fn get_task(
+    async fn get_task(
         &mut self,
         _channel: ChannelContext,
-        columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Option<Box<dyn Task>> {
         // 获取生产者
-        match self.get_provider() {
+        match self.get_provider().await {
             Ok(producer) => {
                 let task = KafkaTask::from_args(
                     self.name.clone(),
-                    &self.args,
                     producer,
-                    columns,
                     shutdown_complete_tx,
                     shutdown,
                     count_rc,
@@ -268,10 +240,6 @@ impl TryFrom<Cli> for Box<KafkaDataSource> {
     fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
         let res = KafkaDataSource {
             name: "kafka".into(),
-            args: value.try_into()?,
-            shutdown: AtomicBool::new(false),
-            columns: vec![],
-            sources: vec!["fake_data_source".to_owned()],
         };
 
         Ok(Box::new(res))
@@ -288,9 +256,7 @@ impl TryInto<KafkaArgs> for Cli {
             batch: self.batch.unwrap_or(5000),
             count: self.count.unwrap_or(isize::max_value() as usize),
             concurrency: self.concurrency.unwrap_or(1),
-            topic: self
-                .topic
-                .ok_or(Error::Io(IoError::ArgNotFound("topic".to_owned())))?,
+            topic: self.topic.ok_or(Error::Io(IoError::ArgNotFound("topic")))?,
         })
     }
 }
@@ -299,19 +265,6 @@ impl TryFrom<DataSourceSchema> for KafkaDataSource {
     type Error = Error;
 
     fn try_from(value: DataSourceSchema) -> std::result::Result<Self, Self::Error> {
-        Ok(KafkaDataSource {
-            name: value.name,
-            args: KafkaArgs::from_value(value.meta, value.channel)?,
-            shutdown: AtomicBool::new(false),
-            columns: DataSourceColumn::get_columns_from_schema(&value.columns.unwrap_or(json!(0))),
-            sources: value.sources.unwrap_or(vec![]),
-        })
-    }
-}
-
-#[async_trait]
-impl Close for KafkaDataSource {
-    async fn close(&mut self) -> Result<()> {
-        Ok(())
+        Ok(KafkaDataSource { name: value.name })
     }
 }

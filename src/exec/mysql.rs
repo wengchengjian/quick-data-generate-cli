@@ -11,7 +11,12 @@ use tokio::sync::{
 };
 
 use crate::{
-    core::{error::Error, limit::token::TokenBuketLimiter},
+    core::{
+        error::{Error, IoError},
+        limit::token::TokenBuketLimiter,
+        traits::{Name, TaskDetailStatic},
+    },
+    datasource::DATA_SOURCE_MANAGER,
     model::column::DataSourceColumn,
 };
 
@@ -19,27 +24,26 @@ use super::Exector;
 
 #[derive(Debug, Clone)]
 pub struct MysqlTaskExecutor {
-    pub database: String,
-    pub table: String,
     pub pool: Pool,
-    pub batch: usize,
     pub limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     pub count: Option<Arc<AtomicI64>>,
-    pub columns: Vec<DataSourceColumn>,
     pub task_name: String,
     pub receiver: Option<Arc<Mutex<Receiver<serde_json::Value>>>>,
     pub sender: Option<Sender<serde_json::Value>>,
     pub next: usize,
 }
+impl Name for MysqlTaskExecutor {
+    fn name(&self) -> &str {
+        &self.task_name
+    }
+}
+
+impl TaskDetailStatic for MysqlTaskExecutor {}
 
 impl MysqlTaskExecutor {
     pub fn new(
         pool: Pool,
-        batch: usize,
         count: Option<Arc<AtomicI64>>,
-        database: String,
-        table: String,
-        columns: Vec<DataSourceColumn>,
         task_name: String,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
         receiver: Option<Arc<Mutex<Receiver<serde_json::Value>>>>,
@@ -47,11 +51,7 @@ impl MysqlTaskExecutor {
     ) -> Self {
         Self {
             pool,
-            batch,
-            columns,
             count,
-            database,
-            table,
             task_name,
             limiter,
             receiver,
@@ -59,19 +59,39 @@ impl MysqlTaskExecutor {
             next: 0,
         }
     }
-    pub fn get_columns_name(&self) -> (String, String) {
+
+    pub async fn database(&self) -> crate::Result<&str> {
+        self.meta()
+            .await
+            .ok_or(Error::Io(IoError::ArgNotFound("meta")))?["database"]
+            .as_str()
+            .ok_or(Error::Io(IoError::ArgNotFound("database")))
+    }
+
+    pub async fn table(&self) -> crate::Result<&str> {
+        self.meta()
+            .await
+            .ok_or(Error::Io(IoError::ArgNotFound("meta")))?["table"]
+            .as_str()
+            .ok_or(Error::Io(IoError::ArgNotFound("table")))
+    }
+
+    pub async fn get_columns_name(&self) -> crate::Result<(String, String)> {
         let mut columns_name = String::new();
         let mut columns_name_val = String::new();
-        for column in &self.columns {
-            columns_name.push_str(&column.name());
-            columns_name.push_str(",");
+        if let Some(columns) = self.columns().await {
+            for column in columns {
+                columns_name.push_str(&column.name());
+                columns_name.push_str(",");
 
-            columns_name_val.push_str(format!(":{}", column.name()).as_str());
-            columns_name_val.push_str(",");
+                columns_name_val.push_str(format!(":{}", column.name()).as_str());
+                columns_name_val.push_str(",");
+            }
+            columns_name.pop();
+            columns_name_val.pop();
+            return Ok((columns_name, columns_name_val));
         }
-        columns_name.pop();
-        columns_name_val.pop();
-        (columns_name, columns_name_val)
+        Err(Error::Io(IoError::ArgNotFound("columns")))
     }
 
     fn replace_val(&self, header: String, key: &str, val: &serde_json::Value) -> String {
@@ -89,23 +109,12 @@ impl MysqlTaskExecutor {
 
 #[async_trait]
 impl Exector for MysqlTaskExecutor {
-    fn batch(&self) -> usize {
-        return self.batch;
-    }
-    fn columns(&self) -> &Vec<DataSourceColumn> {
-        return &self.columns;
-    }
-
     fn limiter(&mut self) -> Option<&mut Arc<Mutex<TokenBuketLimiter>>> {
         return self.limiter.as_mut();
     }
 
-    fn count(&mut self) -> Option<&Arc<AtomicI64>> {
-        return self.count.as_ref();
-    }
-
-    fn name(&self) -> &str {
-        return &self.task_name;
+    fn count_rc(&self) -> Option<Arc<AtomicI64>> {
+        return self.count.clone();
     }
 
     fn is_multi_handle(&self) -> bool {
@@ -123,14 +132,17 @@ impl Exector for MysqlTaskExecutor {
     async fn handle_fetch(&mut self) -> crate::Result<Vec<serde_json::Value>> {
         let query_sql = format!(
             "select * from {}.{} limit {}, {}",
-            self.database, self.table, self.next, self.batch
+            self.database().await?,
+            self.table().await?,
+            self.next,
+            self.batch().await
         );
 
         match self.pool.get_conn().await {
             Ok(mut conn) => {
                 let data = query_sql.with(()).fetch(&mut conn).await?;
                 // 更新next
-                self.next = self.next + self.batch;
+                self.next = self.next + self.batch().await;
                 return Ok(data);
             }
             Err(e) => {
@@ -140,11 +152,16 @@ impl Exector for MysqlTaskExecutor {
     }
 
     async fn handle_batch(&mut self, vals: Vec<serde_json::Value>) -> crate::Result<()> {
-        let (column_names, column_name_vals) = self.get_columns_name();
-
+        let (column_names, column_name_vals) = self.get_columns_name().await?;
+        let schema = DATA_SOURCE_MANAGER
+            .get_schema(self.name())
+            .await
+            .ok_or(Error::Io(IoError::SchemaNotFound))?;
         let mut insert_header = format!(
             "INSERT DELAYED  INTO {}.{} ({}) VALUES ",
-            self.database, self.table, column_names
+            self.database().await?,
+            self.table().await?,
+            column_names
         );
         //        let mut watch = StopWatch::new();
         //        watch.start("组装sql");

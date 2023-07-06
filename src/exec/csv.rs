@@ -9,6 +9,7 @@ use crate::{
     core::{
         error::{Error, IoError},
         limit::token::TokenBuketLimiter,
+        traits::{Name, TaskDetailStatic},
     },
     model::column::DataSourceColumn,
 };
@@ -22,34 +23,40 @@ use tokio::{
 
 #[derive(Debug, Clone)]
 pub struct CsvTaskExecutor {
-    pub filename: String,
-    pub batch: usize,
     pub limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     pub count: Option<Arc<AtomicI64>>,
-    pub columns: Vec<DataSourceColumn>,
     pub task_name: String,
 }
 
+impl Name for CsvTaskExecutor {
+    fn name(&self) -> &str {
+        &self.task_name
+    }
+}
+
+impl TaskDetailStatic for CsvTaskExecutor {}
+
 impl CsvTaskExecutor {
     pub fn new(
-        filename: String,
-        batch: usize,
         count: Option<Arc<AtomicI64>>,
-        columns: Vec<DataSourceColumn>,
         task_name: String,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Self {
         Self {
-            filename,
-            batch,
-            columns,
             count,
             task_name,
             limiter,
         }
     }
+
+    pub async fn filename(&self) -> crate::Result<&str> {
+        self.meta().await.ok_or(Error::Io(IoError::ArgNotFound("meta")))?["filename"]
+            .as_str()
+            .ok_or(Error::Io(IoError::ArgNotFound("filename")))
+    }
+
     pub async fn get_columns_name(&self) -> crate::Result<String> {
-        let path = PathBuf::from(&self.filename);
+        let path = PathBuf::from(self.filename().await?);
         let mut option = OpenOptions::new();
         option.read(true);
         let file = option.open(path).await?;
@@ -77,23 +84,12 @@ impl CsvTaskExecutor {
 
 #[async_trait]
 impl Exector for CsvTaskExecutor {
-    fn batch(&self) -> usize {
-        return self.batch;
-    }
-    fn columns(&self) -> &Vec<DataSourceColumn> {
-        return &self.columns;
-    }
-
     fn limiter(&mut self) -> Option<&mut Arc<Mutex<TokenBuketLimiter>>> {
         return self.limiter.as_mut();
     }
 
-    fn count(&mut self) -> Option<&Arc<AtomicI64>> {
-        return self.count.as_ref();
-    }
-
-    fn name(&self) -> &str {
-        return &self.task_name;
+    fn count_rc(&self) -> Option<Arc<AtomicI64>> {
+        return self.count.clone();
     }
 
     fn is_multi_handle(&self) -> bool {
@@ -119,7 +115,7 @@ impl Exector for CsvTaskExecutor {
         }
         //        watch.stop();
         insert_header.pop();
-        let path = PathBuf::from(&self.filename);
+        let path = PathBuf::from(self.filename().await?);
 
         let mut option = OpenOptions::new();
         option.write(true).append(true);

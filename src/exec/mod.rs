@@ -17,8 +17,10 @@ use crate::{
         error::{Error, IoError},
         limit::token::TokenBuketLimiter,
         log::incr_log,
+        traits::{Name, TaskDetailStatic},
     },
-    model::column::DataSourceColumn,
+    datasource::DATA_SOURCE_MANAGER,
+    model::{column::DataSourceColumn, schema::ChannelSchema},
 };
 
 pub mod csv;
@@ -27,22 +29,14 @@ pub mod kafka;
 pub mod mysql;
 
 #[async_trait]
-pub trait Exector: Send + Sync {
+pub trait Exector: Send + Sync + TaskDetailStatic + Name {
     fn next(&self) -> usize {
         0
     }
 
-    fn batch(&self) -> usize;
-
     fn limiter(&mut self) -> Option<&mut Arc<Mutex<TokenBuketLimiter>>> {
         return None;
     }
-
-    fn count(&mut self) -> Option<&Arc<AtomicI64>> {
-        return None;
-    }
-
-    fn columns(&self) -> &Vec<DataSourceColumn>;
 
     fn is_consumer(&mut self) -> bool {
         return self.sender().is_none() && self.receiver().is_some();
@@ -56,7 +50,9 @@ pub trait Exector: Send + Sync {
         return None;
     }
 
-    fn name(&self) -> &str;
+    fn count_rc(&self) -> Option<Arc<AtomicI64>> {
+        return None;
+    }
 
     fn is_multi_handle(&self) -> bool {
         return true;
@@ -94,10 +90,11 @@ pub trait Exector: Send + Sync {
     ///2. 检查count是否为0
     ///3. 制造数据
     async fn add_batch(&mut self) -> crate::Result<bool> {
-        // let mut watch = StopWatch::new();
+        let batch = self.batch().await;
+
         let mut num = 0;
-        let mut arr = Vec::with_capacity(self.batch() + self.batch() / 4);
-        for _i in 0..self.batch() {
+        let mut arr = Vec::with_capacity(batch + batch / 4);
+        for _i in 0..batch {
             if !self.is_multi_handle() {
                 if let Some(limiter) = self.limiter() {
                     // 获取令牌
@@ -105,7 +102,7 @@ pub trait Exector: Send + Sync {
                 }
             }
 
-            if let Some(count) = self.count() {
+            if let Some(count) = self.count_rc() {
                 if count.load(Ordering::SeqCst) <= 0 {
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     break;
@@ -119,7 +116,7 @@ pub trait Exector: Send + Sync {
                         if !self.is_multi_handle() {
                             self.handle_single(&mut data).await?;
                             num += 1;
-                            if let Some(count) = self.count() {
+                            if let Some(count) = self.count_rc() {
                                 count.fetch_sub(1, Ordering::SeqCst);
                             }
                             if num % 100 == 0 {
@@ -135,7 +132,7 @@ pub trait Exector: Send + Sync {
             }
         }
         if arr.len() == 0 {
-            match self.count() {
+            match self.count_rc() {
                 Some(count) => match count.load(Ordering::SeqCst) {
                     x if x <= 0 => return Ok(true),
                     _ => {
@@ -154,7 +151,7 @@ pub trait Exector: Send + Sync {
                 limiter.lock().await.acquire_num(arr.len()).await;
             }
 
-            if let Some(count) = self.count() {
+            if let Some(count) = self.count_rc() {
                 count.fetch_sub(arr.len() as i64, Ordering::SeqCst);
             }
 
@@ -168,7 +165,7 @@ pub trait Exector: Send + Sync {
         }
         // watch.stop();
         // watch.print_all_task_mils();
-        match self.count() {
+        match self.count_rc() {
             Some(count) => match count.load(Ordering::SeqCst) {
                 x if x <= 0 => Ok(true),
                 _ => Ok(false),

@@ -13,6 +13,7 @@ use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::shutdown::Shutdown;
+use crate::core::traits::{TaskDetailStatic, Name};
 use crate::model::column::{DataSourceColumn, DataTypeEnum};
 use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::mysql::MysqlTask;
@@ -116,25 +117,25 @@ impl MysqlArgs {
         Ok(MysqlArgs {
             host: meta["host"]
                 .as_str()
-                .ok_or(Error::Io(IoError::ArgNotFound("host".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("host")))?
                 .to_string(),
             port: meta["port"].as_u64().unwrap_or(3306) as u16,
             user: meta["user"]
                 .as_str()
-                .ok_or(Error::Io(IoError::ArgNotFound("user".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("user")))?
                 .to_string(),
             password: meta["password"]
                 .as_str()
-                .ok_or(Error::Io(IoError::ArgNotFound("password".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("password")))?
                 .to_string(),
             database: meta["database"]
                 .as_str()
-                .ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("database")))?
                 .to_string(),
 
             table: meta["table"]
                 .as_str()
-                .ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("table")))?
                 .to_string(),
             batch: channel.batch.unwrap_or(1000),
             count: channel.count.unwrap_or(usize::MAX),
@@ -152,20 +153,20 @@ impl TryInto<MysqlArgs> for Cli {
             port: self.port.unwrap_or(3306),
             user: self
                 .user
-                .ok_or(Error::Io(IoError::ArgNotFound("user".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("user")))?
                 .to_string(),
             password: self
                 .password
-                .ok_or(Error::Io(IoError::ArgNotFound("password".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("password")))?
                 .to_string(),
             database: self
                 .database
-                .ok_or(Error::Io(IoError::ArgNotFound("database".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("database")))?
                 .to_string(),
 
             table: self
                 .table
-                .ok_or(Error::Io(IoError::ArgNotFound("table".to_string())))?
+                .ok_or(Error::Io(IoError::ArgNotFound("table")))?
                 .to_string(),
             batch: self.batch.unwrap_or(1000),
             count: self.count.unwrap_or(0),
@@ -191,62 +192,16 @@ impl TryFrom<DataSourceSchema> for MysqlDataSource {
 
 use async_trait::async_trait;
 
+impl Name for MysqlDataSource {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl TaskDetailStatic for MysqlDataSource {}
+
 #[async_trait]
 impl super::DataSourceChannel for MysqlDataSource {
-    fn sources(&self) -> Option<&Vec<String>> {
-        return Some(&self.sources);
-    }
-
-    fn columns_mut(&mut self, columns: Vec<DataSourceColumn>) {
-        self.columns = columns;
-    }
-
-    fn source_type(&self) -> Option<DataSourceEnum> {
-        return Some(DataSourceEnum::Mysql);
-    }
-
-    fn batch(&self) -> Option<usize> {
-        return Some(self.args.batch);
-    }
-
-    fn meta(&self) -> Option<serde_json::Value> {
-        return Some(json!({
-            "host": self.args.host,
-            "port": self.args.port,
-            "user": self.args.user,
-            "password": self.args.password,
-            "database": self.args.database,
-            "table": self.args.table
-        }));
-    }
-
-    fn channel_schema(&self) -> Option<ChannelSchema> {
-        return Some(ChannelSchema {
-            batch: Some(self.args.batch),
-            concurrency: Some(self.args.concurrency),
-            count: Some(self.args.count),
-        });
-    }
-
-    fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
-        return Some(&self.columns);
-    }
-
-    fn concurrency(&self) -> usize {
-        return self.args.concurrency;
-    }
-
-    fn name(&self) -> &str {
-        return &self.name;
-    }
-
-    fn count(&self) -> Option<usize> {
-        match self.args.count {
-            0 => None,
-            x => Some(x),
-        }
-    }
-
     async fn after_run(
         &mut self,
         _context: Arc<RwLock<DataSourceContext>>,
@@ -257,7 +212,7 @@ impl super::DataSourceChannel for MysqlDataSource {
         }
         if self.need_log() {
             //更新状态
-            DATA_SOURCE_MANAGER.write().await.update_final_status(
+            DATA_SOURCE_MANAGER.update_final_status(
                 self.name(),
                 DataSourceChannelStatus::Ended,
                 false,
@@ -279,10 +234,9 @@ impl super::DataSourceChannel for MysqlDataSource {
         return Some(columns);
     }
 
-    fn get_task(
+    async fn get_task(
         &mut self,
         channel: ChannelContext,
-        columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
@@ -293,9 +247,7 @@ impl super::DataSourceChannel for MysqlDataSource {
 
         let task = MysqlTask::from_args(
             self.name.clone(),
-            &self.args,
             pool,
-            columns,
             shutdown_complete_tx,
             shutdown,
             limiter,
@@ -306,13 +258,6 @@ impl super::DataSourceChannel for MysqlDataSource {
     }
 }
 
-#[async_trait]
-impl Close for MysqlDataSource {
-    async fn close(&mut self) -> Result<()> {
-        self.shutdown.store(true, Ordering::SeqCst);
-        Ok(())
-    }
-}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct MysqlArgs {
@@ -336,7 +281,7 @@ pub struct MysqlArgs {
 }
 
 use super::{
-    ChannelContext, Close, DataSourceChannel, DataSourceChannelStatus, DataSourceContext,
+    ChannelContext,  DataSourceChannel, DataSourceChannelStatus, DataSourceContext,
     DataSourceEnum, DATA_SOURCE_MANAGER,
 };
 

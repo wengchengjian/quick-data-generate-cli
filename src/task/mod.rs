@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::{core::shutdown::Shutdown, exec::Exector};
+use crate::{core::{shutdown::Shutdown, traits::{Name, TaskDetailStatic}}, exec::Exector};
 
 pub mod clickhouse;
 pub mod csv;
@@ -9,7 +9,7 @@ pub mod kafka;
 pub mod mysql;
 
 #[async_trait]
-pub trait Task: Send + Sync {
+pub trait Task: Send + Sync + Name + TaskDetailStatic {
     fn shutdown(&mut self) -> &mut Shutdown;
 
     fn executor(&self) -> Box<dyn Exector>;

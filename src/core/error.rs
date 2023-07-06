@@ -20,10 +20,13 @@ pub enum IoError {
     Io(#[source] std::io::Error),
 
     #[error("arg:`{0}` not found")]
-    ArgNotFound(String),
+    ArgNotFound(&'static str),
 
     #[error("parse schema error")]
     ParseSchemaError,
+
+    #[error("cannot found schema error")]
+    SchemaNotFound,
 
     #[error("parse json error: {}", _0)]
     ParseJsonError(#[source] serde_json::Error),

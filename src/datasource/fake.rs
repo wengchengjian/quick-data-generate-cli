@@ -8,6 +8,7 @@ use crate::core::error::Result;
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::parse::DEFAULT_FAKE_DATASOURCE;
 use crate::core::shutdown::Shutdown;
+use crate::core::traits::{Name, TaskDetailStatic};
 use crate::model::column::DataSourceColumn;
 use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::fake::FakeTask;
@@ -25,6 +26,13 @@ impl FakeDataSource {
         }
     }
 }
+impl Name for FakeDataSource {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl TaskDetailStatic for FakeDataSource {}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FakeColumnDefine {
@@ -46,60 +54,16 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl super::DataSourceChannel for FakeDataSource {
-    fn source_type(&self) -> Option<DataSourceEnum> {
-        return Some(DataSourceEnum::Fake);
-    }
-
-    fn batch(&self) -> Option<usize> {
-        return Some(self.args.batch);
-    }
-
-    fn channel_schema(&self) -> Option<ChannelSchema> {
-        return Some(ChannelSchema {
-            batch: Some(self.args.batch),
-            concurrency: Some(self.args.concurrency),
-            count: Some(usize::MAX),
-        });
-    }
-
-    fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
-        return Some(&self.columns);
-    }
-
-    fn concurrency(&self) -> usize {
-        return self.args.concurrency;
-    }
-
-    fn name(&self) -> &str {
-        return &self.name;
-    }
-
-    fn get_task(
+    async fn get_task(
         &mut self,
         channel: ChannelContext,
-        columns: Vec<DataSourceColumn>,
         shutdown_complete_tx: mpsc::Sender<()>,
         shutdown: Shutdown,
         _count_rc: Option<Arc<AtomicI64>>,
         _limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Option<Box<dyn Task>> {
-        let task = FakeTask::from_args(
-            self.name.clone(),
-            &self.args,
-            columns,
-            shutdown_complete_tx,
-            shutdown,
-            channel,
-        );
+        let task = FakeTask::from_args(self.name.clone(), shutdown_complete_tx, shutdown, channel);
         return Some(Box::new(task));
-    }
-}
-
-#[async_trait]
-impl Close for FakeDataSource {
-    async fn close(&mut self) -> Result<()> {
-        self.shutdown.store(true, Ordering::SeqCst);
-        Ok(())
     }
 }
 
@@ -110,7 +74,7 @@ pub struct FakeArgs {
     pub concurrency: usize,
 }
 
-use super::{ChannelContext, Close, DataSourceEnum};
+use super::{ChannelContext, DataSourceEnum};
 
 #[derive(Debug)]
 pub struct FakeDataSource {

@@ -2,18 +2,12 @@ use async_trait::async_trait;
 use clickhouse::{inserter::Inserter, Client};
 use serde_json::Value;
 
-use crate::datasource::Close;
 
 #[derive(Debug)]
 pub struct ClickHouseTask {
     pub name: String,
 }
-#[async_trait]
-impl Close for ClickHouseTask {
-    async fn close(&mut self) -> crate::Result<()> {
-        Ok(())
-    }
-}
+
 
 impl ClickHouseTask {
     pub fn new(name: String, _client: Client, _batch: usize, _count: usize) -> ClickHouseTask {

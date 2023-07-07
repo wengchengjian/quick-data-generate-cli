@@ -56,7 +56,7 @@ pub fn create_context(limit: Option<usize>, skip: bool) -> DataSourceContext {
 pub async fn create_delegate_output(cli: Cli) -> Result<(DelegatedDataSource, DataSourceContext)> {
     let cli_args = cli.clone();
     // 获取所有数据源
-    let (datasources, interval, context) = parse_datasource(cli_args).expect("解析数据源失败");
+    let (datasources, interval, context) = parse_datasource(cli_args).await.expect("解析数据源失败");
 
     if datasources.len() == 0 {
         return Err(Error::Io(IoError::ParseSchemaError));

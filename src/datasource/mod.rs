@@ -747,6 +747,8 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
                     }
                 }
             }
+        } else {
+            return Err(Error::Io(IoError::SchemaNotFound));
         }
         if context.read().await.skip {
             return Ok(());

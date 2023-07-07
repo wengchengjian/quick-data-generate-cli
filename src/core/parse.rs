@@ -12,6 +12,7 @@ use crate::{
     datasource::{
         csv::CsvDataSource, fake::FakeDataSource, kafka::KafkaDataSource, mysql::MysqlDataSource,
         DataSourceChannel, DataSourceContext, DataSourceEnum, MpscDataSourceChannel,
+        DATA_SOURCE_MANAGER,
     },
     impl_func_is_primitive_by_parse,
     model::{
@@ -134,12 +135,19 @@ pub fn merge_datasource_schema_args(
     return result;
 }
 
-pub fn parse_datasources_from_schema(schema: Schema) -> Result<Vec<Box<dyn DataSourceChannel>>> {
+pub async fn parse_datasources_from_schema(
+    schema: Schema,
+) -> Result<Vec<Box<dyn DataSourceChannel>>> {
     let mut outputs = vec![];
 
     let sources = &schema.sources;
 
     for source in sources {
+        DATA_SOURCE_MANAGER
+            .write()
+            .await
+            .put_schema(&source.name, source.clone());
+
         // 整合参数
         let source_map: HashMap<&str, DataSourceSchema> = schema
             .sources
@@ -157,10 +165,10 @@ pub fn parse_datasources_from_schema(schema: Schema) -> Result<Vec<Box<dyn DataS
     Ok(outputs)
 }
 
-pub fn parse_datasource_from_cli(cli: Cli) -> Result<Vec<Box<dyn DataSourceChannel>>> {
+pub async fn parse_datasource_from_cli(cli: Cli) -> Result<Vec<Box<dyn DataSourceChannel>>> {
     let schema = parse_schema_from_cli(cli)?;
 
-    return Ok(parse_datasources_from_schema(schema)?);
+    return Ok(parse_datasources_from_schema(schema).await?);
 }
 
 pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
@@ -198,7 +206,7 @@ pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
 }
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
-pub fn parse_datasource(
+pub async fn parse_datasource(
     cli: Cli,
 ) -> Result<(Vec<Box<dyn DataSourceChannel>>, usize, DataSourceContext)> {
     let mut cli = cli;
@@ -229,14 +237,14 @@ pub fn parse_datasource(
             }
         }
 
-        let mut schema_datasources = parse_datasources_from_schema(schema)?;
+        let mut schema_datasources = parse_datasources_from_schema(schema).await?;
 
         datasources.append(&mut schema_datasources);
     }
     let limit = cli.limit;
     let skip = cli.skip;
 
-    let datasource = parse_datasource_from_cli(cli)?;
+    let datasource = parse_datasource_from_cli(cli).await?;
     datasources.extend(datasource);
 
     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
@@ -333,6 +341,7 @@ mod tests {
     use std::{fs, path::PathBuf};
 
     use serde_json::json;
+    use tokio_test::block_on;
 
     use super::*;
 
@@ -395,17 +404,19 @@ mod tests {
 
     #[test]
     fn test_parse_datasources_schema() {
-        let path_buf = PathBuf::from(SCHEMA_PATH);
+        block_on(async {
+            let path_buf = PathBuf::from(SCHEMA_PATH);
 
-        let schema = parse_schema(&path_buf).expect("解析schema文件失败");
+            let schema = parse_schema(&path_buf).expect("解析schema文件失败");
 
-        let datasources = parse_datasources_from_schema(schema);
+            let datasources = parse_datasources_from_schema(schema).await;
 
-        match datasources {
-            Ok(datasource) => {
-                println!("parse datasources struct:{:#?}", datasource);
+            match datasources {
+                Ok(datasource) => {
+                    println!("parse datasources struct:{:#?}", datasource);
+                }
+                Err(e) => panic!("read schema file error:{e}"),
             }
-            Err(e) => panic!("read schema file error:{e}"),
-        }
+        });
     }
 }

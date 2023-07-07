@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicI64, AtomicU64},
+    atomic::{AtomicI64},
     Arc,
 };
 
@@ -17,7 +17,6 @@ use crate::{
         limit::token::TokenBuketLimiter,
         traits::{Name, TaskDetailStatic},
     },
-    model::column::DataSourceColumn,
 };
 
 use super::Exector;
@@ -37,13 +36,13 @@ impl Name for KafkaTaskExecutor {
 }
 
 impl KafkaTaskExecutor {
-    pub async fn topic(&self) -> crate::Result<&str> {
-        let topic = self
-            .meta().await
+    pub async fn topic(&self) -> crate::Result<String> {
+        self.meta()
+            .await
             .ok_or(Error::Io(IoError::ArgNotFound("topic")))?
             .as_str()
-            .ok_or(Error::Io(IoError::ArgNotFound("topic")))?;
-        return Ok(topic);
+            .map(|topic| topic.to_owned())
+            .ok_or(Error::Io(IoError::ArgNotFound("topic")))
     }
 }
 
@@ -77,7 +76,7 @@ impl Exector for KafkaTaskExecutor {
                 }
                 self.producer
                     .send(
-                        FutureRecord::to(topic).key(&key).payload(&data_str),
+                        FutureRecord::to(&topic).key(&key).payload(&data_str),
                         Timeout::Never,
                     )
                     .await

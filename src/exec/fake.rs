@@ -1,4 +1,4 @@
-use std::sync::{atomic::AtomicI64, Arc};
+
 
 use async_trait::async_trait;
 
@@ -11,7 +11,6 @@ use crate::{
         traits::{Name, TaskDetailStatic},
     },
     datasource::DATA_SOURCE_MANAGER,
-    model::column::DataSourceColumn,
 };
 
 use super::Exector;
@@ -51,8 +50,10 @@ impl Exector for FakeTaskExecutor {
     async fn handle_fetch(&mut self) -> crate::Result<Vec<serde_json::Value>> {
         let mut datas = vec![];
         let columns = DATA_SOURCE_MANAGER
-            .columns(self.name())
+            .read()
             .await
+            .columns(self.name())
+            .cloned()
             .ok_or(Error::Io(IoError::UndefinedColumns))?;
         for _ in 0..self.batch().await {
             datas.push(get_fake_data(&columns));

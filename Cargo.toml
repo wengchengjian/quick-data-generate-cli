@@ -34,6 +34,7 @@ dashmap = "5.4.0"
 bit-vec = "0.6.3"
 bloom = "0.3.2"
 bytes = "1.4.0"
+async-recursion = "1.0.4"
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["async_tokio", "html_reports"] }
 tokio-test = "*"

@@ -28,6 +28,7 @@ pub mod task;
 pub mod util;
 #[macro_use]
 extern crate lazy_static;
+
 pub type Json = serde_json::Value;
 
 #[tokio::main(flavor = "multi_thread")]
@@ -95,21 +96,21 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
     }
     let context = context.read().await;
-    let schema = Schema::new(Some(5), DATA_SOURCE_MANAGER.get_all_schema());
+    let schema = Schema::new(Some(5), DATA_SOURCE_MANAGER.read().await.get_all_schema());
     //输出schema,以便修正或重复利用
     let path = output_schema_to_dir(&context.id, &schema).await;
     println!("schema文件输出至: {:?}", path);
     if !done {
         // 关闭所有任务
-        DATA_SOURCE_MANAGER.stop_all_task();
+        DATA_SOURCE_MANAGER.write().await.stop_all_task().await;
         // 等待所有任务关闭
-        DATA_SOURCE_MANAGER.await_all_done().await;
+        DATA_SOURCE_MANAGER.read().await.await_all_done().await;
     }
     Ok(())
 }
 
 async fn await_all_done() {
-    DATA_SOURCE_MANAGER.await_all_done().await
+    DATA_SOURCE_MANAGER.read().await.await_all_done().await
 }
 
 #[cfg(target_os = "windows")]

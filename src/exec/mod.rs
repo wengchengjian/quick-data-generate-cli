@@ -19,8 +19,6 @@ use crate::{
         log::incr_log,
         traits::{Name, TaskDetailStatic},
     },
-    datasource::DATA_SOURCE_MANAGER,
-    model::{column::DataSourceColumn, schema::ChannelSchema},
 };
 
 pub mod csv;

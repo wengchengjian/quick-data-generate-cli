@@ -9,9 +9,7 @@ use crate::{
         shutdown::Shutdown,
         traits::{Name, TaskDetailStatic},
     },
-    datasource::{csv::CsvArgs},
     exec::{csv::CsvTaskExecutor, Exector},
-    model::column::DataSourceColumn,
 };
 
 use super::Task;

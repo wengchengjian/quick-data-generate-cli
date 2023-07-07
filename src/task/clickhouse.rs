@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+
 use clickhouse::{inserter::Inserter, Client};
 use serde_json::Value;
 

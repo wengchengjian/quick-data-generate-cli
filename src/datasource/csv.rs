@@ -15,7 +15,7 @@ use serde_json::json;
 
 use std::io::Cursor;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use std::vec;
@@ -26,6 +26,7 @@ use tokio::io::BufWriter;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
 impl CsvDataSource {
+    #[deprecated(since = "0.1.0", note = "Please use the parse schema function instead")]
     pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = CsvDataSource {
             name: "Csv".into(),
@@ -183,7 +184,7 @@ pub struct CsvArgs {
     pub concurrency: usize,
 }
 
-use super::{ChannelContext, DataSourceChannel, DataSourceContext, DataSourceEnum};
+use super::{ChannelContext, DataSourceChannel, DataSourceContext};
 
 #[derive(Debug)]
 pub struct CsvDataSource {

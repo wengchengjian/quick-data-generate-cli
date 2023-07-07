@@ -45,16 +45,7 @@ pub fn parse_mpsc_from_schema(
 
     let mut producer = vec![];
     let default_sources = vec![DEFAULT_FAKE_DATASOURCE.to_owned()];
-    let mut sources: &Vec<String> = &vec![];
-
-    match &schema.sources {
-        Some(arr) => {
-            sources = arr;
-        }
-        None => {
-            sources = &default_sources;
-        }
-    }
+    let mut sources: &Vec<String> = schema.sources.as_ref().unwrap_or(&default_sources);
 
     if sources.len() == 0 {
         sources = &default_sources;

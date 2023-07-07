@@ -10,9 +10,7 @@ use crate::{
         shutdown::Shutdown,
         traits::{Name, TaskDetailStatic},
     },
-    datasource::{kafka::KafkaArgs},
     exec::{kafka::KafkaTaskExecutor, Exector},
-    model::column::DataSourceColumn,
 };
 
 use super::Task;

@@ -3,7 +3,7 @@ use mysql_async::{Opts, Pool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
+
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use std::vec;
@@ -13,7 +13,7 @@ use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::shutdown::Shutdown;
-use crate::core::traits::{TaskDetailStatic, Name};
+use crate::core::traits::{Name, TaskDetailStatic};
 use crate::model::column::{DataSourceColumn, DataTypeEnum};
 use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::mysql::MysqlTask;
@@ -81,6 +81,7 @@ impl MysqlDataSource {
         Ok(res)
     }
 
+    #[deprecated(since = "0.1.0", note = "Please use the parse schema function instead")]
     pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = MysqlDataSource {
             name: "mysql".into(),
@@ -212,7 +213,7 @@ impl super::DataSourceChannel for MysqlDataSource {
         }
         if self.need_log() {
             //更新状态
-            DATA_SOURCE_MANAGER.update_final_status(
+            DATA_SOURCE_MANAGER.write().await.update_final_status(
                 self.name(),
                 DataSourceChannelStatus::Ended,
                 false,
@@ -258,7 +259,6 @@ impl super::DataSourceChannel for MysqlDataSource {
     }
 }
 
-
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct MysqlArgs {
     pub host: String,
@@ -281,8 +281,8 @@ pub struct MysqlArgs {
 }
 
 use super::{
-    ChannelContext,  DataSourceChannel, DataSourceChannelStatus, DataSourceContext,
-    DataSourceEnum, DATA_SOURCE_MANAGER,
+    ChannelContext, DataSourceChannel, DataSourceChannelStatus, DataSourceContext,
+    DATA_SOURCE_MANAGER,
 };
 
 #[derive(Debug)]

@@ -7,8 +7,7 @@ use crate::{
 };
 
 use super::{
-    check::{DEFAULT_BATCH_SIZE, MIN_BATCH_SIZE, MIN_THREAD_SIZE},
-    error::{Error, IoError},
+    check::{DEFAULT_BATCH_SIZE, MIN_THREAD_SIZE},
 };
 
 pub trait Name {
@@ -18,8 +17,12 @@ pub trait Name {
 /// 用于实现一些公共方法
 #[async_trait]
 pub trait TaskDetailStatic: Name {
-    async fn schema(&self) -> Option<&DataSourceSchema> {
-        DATA_SOURCE_MANAGER.get_schema(self.name()).await
+    async fn schema(&self) -> Option<DataSourceSchema> {
+        DATA_SOURCE_MANAGER
+            .read()
+            .await
+            .get_schema(self.name())
+            .cloned()
     }
 
     async fn batch(&self) -> usize {
@@ -49,14 +52,18 @@ pub trait TaskDetailStatic: Name {
         0
     }
 
-    async fn meta(&self) -> Option<&Json> {
+    async fn meta(&self) -> Option<Json> {
         if let Some(schema) = self.schema().await {
-            return schema.meta.as_ref();
+            return schema.meta.as_ref().cloned();
         }
         None
     }
 
-    async fn columns(&self) -> Option<&Vec<DataSourceColumn>> {
-        DATA_SOURCE_MANAGER.columns(self.name()).await
+    async fn columns(&self) -> Option<Vec<DataSourceColumn>> {
+        DATA_SOURCE_MANAGER
+            .read()
+            .await
+            .columns(self.name())
+            .cloned()
     }
 }

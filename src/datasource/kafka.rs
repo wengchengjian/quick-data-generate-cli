@@ -1,12 +1,9 @@
 use std::{
-    sync::{
-        atomic::{AtomicBool, AtomicI64},
-        Arc,
-    },
+    sync::{atomic::AtomicI64, Arc},
     time::Duration,
 };
 
-use super::{ChannelContext, DataSourceChannel, DataSourceEnum, DATA_SOURCE_MANAGER};
+use super::{ChannelContext, DataSourceChannel, DATA_SOURCE_MANAGER};
 use crate::{
     core::{
         cli::Cli,
@@ -132,14 +129,14 @@ impl KafkaDataSource {
     }
 
     pub async fn host(&self) -> String {
-        self.meta().await.unwrap_or(&json!({}))["host"]
+        self.meta().await.unwrap_or(json!({}))["host"]
             .as_str()
             .unwrap_or("localhost")
             .to_owned()
     }
 
     pub async fn port(&self) -> u64 {
-        self.meta().await.unwrap_or(&json!({}))["port"]
+        self.meta().await.unwrap_or(json!({}))["port"]
             .as_u64()
             .unwrap_or(9092)
     }
@@ -167,7 +164,8 @@ impl KafkaDataSource {
         return Ok(consumer);
     }
 
-    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
+    #[deprecated(since = "0.1.0", note = "Please use the parse schema function instead")]
+    pub(crate) fn from_cli(_cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = KafkaDataSource {
             name: "kafka".into(),
         };
@@ -187,8 +185,8 @@ impl TaskDetailStatic for KafkaDataSource {}
 #[async_trait]
 impl DataSourceChannel for KafkaDataSource {
     async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
-        if let Some(schema) = DATA_SOURCE_MANAGER.get_schema(self.name()).await {
-            if let Some(topic) = self.meta().await.unwrap_or(&json!({}))["topic"].as_str() {
+        if let Some(_schema) = DATA_SOURCE_MANAGER.read().await.get_schema(self.name()) {
+            if let Some(topic) = self.meta().await.unwrap_or(json!({}))["topic"].as_str() {
                 let ref topics = vec![topic];
                 match self.get_consumer(DEFAULT_GROUP.to_string(), topics).await {
                     Ok(consumer) => {
@@ -237,7 +235,7 @@ impl DataSourceChannel for KafkaDataSource {
 impl TryFrom<Cli> for Box<KafkaDataSource> {
     type Error = Box<dyn std::error::Error>;
 
-    fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
+    fn try_from(_value: Cli) -> std::result::Result<Self, Self::Error> {
         let res = KafkaDataSource {
             name: "kafka".into(),
         };

@@ -1,16 +1,16 @@
 use serde_json::json;
-use std::sync::atomic::Ordering;
+
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
-use crate::core::error::Result;
+
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::parse::DEFAULT_FAKE_DATASOURCE;
 use crate::core::shutdown::Shutdown;
 use crate::core::traits::{Name, TaskDetailStatic};
 use crate::model::column::DataSourceColumn;
-use crate::model::schema::{ChannelSchema, DataSourceSchema};
+use crate::model::schema::{DataSourceSchema};
 use crate::task::fake::FakeTask;
 use crate::task::Task;
 
@@ -74,7 +74,7 @@ pub struct FakeArgs {
     pub concurrency: usize,
 }
 
-use super::{ChannelContext, DataSourceEnum};
+use super::{ChannelContext};
 
 #[derive(Debug)]
 pub struct FakeDataSource {

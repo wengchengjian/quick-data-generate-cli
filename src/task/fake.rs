@@ -7,9 +7,8 @@ use crate::{
         shutdown::Shutdown,
         traits::{Name, TaskDetailStatic},
     },
-    datasource::{fake::FakeArgs, ChannelContext},
+    datasource::{ChannelContext},
     exec::{fake::FakeTaskExecutor, Exector},
-    model::column::DataSourceColumn,
 };
 
 use super::Task;

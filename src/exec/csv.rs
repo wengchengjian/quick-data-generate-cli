@@ -11,7 +11,6 @@ use crate::{
         limit::token::TokenBuketLimiter,
         traits::{Name, TaskDetailStatic},
     },
-    model::column::DataSourceColumn,
 };
 use async_trait::async_trait;
 use bytes::Buf;
@@ -49,9 +48,12 @@ impl CsvTaskExecutor {
         }
     }
 
-    pub async fn filename(&self) -> crate::Result<&str> {
-        self.meta().await.ok_or(Error::Io(IoError::ArgNotFound("meta")))?["filename"]
+    pub async fn filename(&self) -> crate::Result<String> {
+        self.meta()
+            .await
+            .ok_or(Error::Io(IoError::ArgNotFound("meta")))?["filename"]
             .as_str()
+            .map(|filename| filename.to_owned())
             .ok_or(Error::Io(IoError::ArgNotFound("filename")))
     }
 

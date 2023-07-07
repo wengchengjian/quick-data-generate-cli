@@ -17,7 +17,6 @@ use crate::{
         traits::{Name, TaskDetailStatic},
     },
     datasource::DATA_SOURCE_MANAGER,
-    model::column::DataSourceColumn,
 };
 
 use super::Exector;
@@ -60,19 +59,21 @@ impl MysqlTaskExecutor {
         }
     }
 
-    pub async fn database(&self) -> crate::Result<&str> {
+    pub async fn database(&self) -> crate::Result<String> {
         self.meta()
             .await
             .ok_or(Error::Io(IoError::ArgNotFound("meta")))?["database"]
             .as_str()
+            .map(|database| database.to_owned())
             .ok_or(Error::Io(IoError::ArgNotFound("database")))
     }
 
-    pub async fn table(&self) -> crate::Result<&str> {
+    pub async fn table(&self) -> crate::Result<String> {
         self.meta()
             .await
             .ok_or(Error::Io(IoError::ArgNotFound("meta")))?["table"]
             .as_str()
+            .map(|table| table.to_owned())
             .ok_or(Error::Io(IoError::ArgNotFound("table")))
     }
 
@@ -153,9 +154,10 @@ impl Exector for MysqlTaskExecutor {
 
     async fn handle_batch(&mut self, vals: Vec<serde_json::Value>) -> crate::Result<()> {
         let (column_names, column_name_vals) = self.get_columns_name().await?;
-        let schema = DATA_SOURCE_MANAGER
-            .get_schema(self.name())
+        let _schema = DATA_SOURCE_MANAGER
+            .read()
             .await
+            .get_schema(self.name())
             .ok_or(Error::Io(IoError::SchemaNotFound))?;
         let mut insert_header = format!(
             "INSERT DELAYED  INTO {}.{} ({}) VALUES ",

@@ -7,9 +7,8 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     core::{limit::token::TokenBuketLimiter, shutdown::Shutdown, traits::{Name, TaskDetailStatic}},
-    datasource::{mysql::MysqlArgs, ChannelContext},
+    datasource::{ChannelContext},
     exec::{mysql::MysqlTaskExecutor, Exector},
-    model::column::DataSourceColumn,
 };
 
 use super::Task;

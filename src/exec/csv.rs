@@ -5,12 +5,10 @@ use std::{
 };
 
 use super::Exector;
-use crate::{
-    core::{
-        error::{Error, IoError},
-        limit::token::TokenBuketLimiter,
-        traits::{Name, TaskDetailStatic},
-    },
+use crate::core::{
+    error::{Error, IoError},
+    limit::token::TokenBuketLimiter,
+    traits::{Name, TaskDetailStatic},
 };
 use async_trait::async_trait;
 use bytes::Buf;
@@ -22,6 +20,7 @@ use tokio::{
 
 #[derive(Debug, Clone)]
 pub struct CsvTaskExecutor {
+    pub id: String,
     pub limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     pub count: Option<Arc<AtomicI64>>,
     pub task_name: String,
@@ -31,17 +30,23 @@ impl Name for CsvTaskExecutor {
     fn name(&self) -> &str {
         &self.task_name
     }
+
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl TaskDetailStatic for CsvTaskExecutor {}
 
 impl CsvTaskExecutor {
     pub fn new(
+        pid: String,
         count: Option<Arc<AtomicI64>>,
         task_name: String,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Self {
         Self {
+            id: pid,
             count,
             task_name,
             limiter,

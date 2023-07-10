@@ -29,6 +29,7 @@ impl CsvDataSource {
     #[deprecated(since = "0.1.0", note = "Please use the parse schema function instead")]
     pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = CsvDataSource {
+            id: Uuid::new_v4().to_string(),
             name: "Csv".into(),
             args: cli.try_into()?,
             shutdown: AtomicBool::new(false),
@@ -73,7 +74,7 @@ impl CsvArgs {
                 .to_string(),
 
             batch: channel.batch.unwrap_or(1000),
-            count: channel.count.unwrap_or(usize::MAX),
+            count: channel.count.unwrap_or(isize::MAX),
             concurrency: channel.concurrency.unwrap_or(1),
         })
     }
@@ -97,6 +98,7 @@ impl TryFrom<DataSourceSchema> for CsvDataSource {
 
     fn try_from(value: DataSourceSchema) -> std::result::Result<Self, Self::Error> {
         Ok(CsvDataSource {
+            id: Uuid::new_v4().to_string(),
             name: value.name,
             args: CsvArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
@@ -112,6 +114,10 @@ impl Name for CsvDataSource {
     fn name(&self) -> &str {
         &self.name
     }
+
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl TaskDetailStatic for CsvDataSource {}
@@ -124,7 +130,7 @@ impl super::DataSourceChannel for CsvDataSource {
         _channel: ChannelContext,
     ) -> crate::Result<()> {
         //注册日志
-        register(&self.name().clone()).await;
+        register(&self.id().clone()).await;
         // 创建csv文件
         let path = PathBuf::from(&self.args.filename);
 
@@ -163,7 +169,8 @@ impl super::DataSourceChannel for CsvDataSource {
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Option<Box<dyn Task>> {
         let task = CsvTask::from_args(
-            self.name.clone(),
+            self.id(),
+            self.name(),
             shutdown_complete_tx,
             shutdown,
             limiter,
@@ -179,15 +186,17 @@ pub struct CsvArgs {
 
     pub batch: usize,
 
-    pub count: usize,
+    pub count: isize,
 
     pub concurrency: usize,
 }
-
 use super::{ChannelContext, DataSourceChannel, DataSourceContext};
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct CsvDataSource {
+    pub id: String,
+
     pub name: String,
 
     pub args: CsvArgs,
@@ -204,6 +213,7 @@ impl TryFrom<Cli> for Box<CsvDataSource> {
 
     fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
         let res = CsvDataSource {
+            id: Uuid::new_v4().to_string(),
             name: "Csv".into(),
             args: value.try_into()?,
             shutdown: AtomicBool::new(false),

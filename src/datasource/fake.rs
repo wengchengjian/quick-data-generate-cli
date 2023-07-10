@@ -4,21 +4,21 @@ use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
-
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::parse::DEFAULT_FAKE_DATASOURCE;
 use crate::core::shutdown::Shutdown;
 use crate::core::traits::{Name, TaskDetailStatic};
 use crate::model::column::DataSourceColumn;
-use crate::model::schema::{DataSourceSchema};
+use crate::model::schema::DataSourceSchema;
 use crate::task::fake::FakeTask;
 use crate::task::Task;
-
+use uuid::Uuid;
 impl FakeDataSource {
     pub fn new(schema: DataSourceSchema) -> FakeDataSource {
         let batch = schema.channel.as_ref().unwrap().batch.unwrap_or(1000);
         let concurrency = schema.channel.unwrap().concurrency.unwrap_or(1);
         FakeDataSource {
+            id: Uuid::new_v4().to_string(),
             name: DEFAULT_FAKE_DATASOURCE.to_owned(),
             shutdown: AtomicBool::new(false),
             columns: DataSourceColumn::get_columns_from_schema(&schema.columns.unwrap_or(json!(0))),
@@ -29,6 +29,10 @@ impl FakeDataSource {
 impl Name for FakeDataSource {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn id(&self) -> &str {
+        &self.id
     }
 }
 
@@ -62,7 +66,13 @@ impl super::DataSourceChannel for FakeDataSource {
         _count_rc: Option<Arc<AtomicI64>>,
         _limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Option<Box<dyn Task>> {
-        let task = FakeTask::from_args(self.name.clone(), shutdown_complete_tx, shutdown, channel);
+        let task = FakeTask::from_args(
+            self.id(),
+            self.name(),
+            shutdown_complete_tx,
+            shutdown,
+            channel,
+        );
         return Some(Box::new(task));
     }
 }
@@ -74,10 +84,12 @@ pub struct FakeArgs {
     pub concurrency: usize,
 }
 
-use super::{ChannelContext};
+use super::ChannelContext;
 
 #[derive(Debug)]
 pub struct FakeDataSource {
+    pub id: String,
+
     pub name: String,
 
     pub columns: Vec<DataSourceColumn>,

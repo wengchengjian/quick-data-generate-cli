@@ -1,13 +1,14 @@
 use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
+use mysql_common::frunk::labelled::chars::I;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Arc;
 use std::vec;
 use tokio::sync::{mpsc, Mutex, RwLock};
+use uuid::Uuid;
 
 use crate::core::cli::Cli;
 use crate::core::error::{Error, IoError, Result};
@@ -73,7 +74,7 @@ impl MysqlDataSource {
 
                 return DataSourceColumn {
                     name: column.field.clone(),
-                    data_type: DataTypeEnum::from_string(column.cype.clone()).unwrap(),
+                    data_type: DataTypeEnum::from_string(&column.cype).unwrap(),
                 };
             })
             .await
@@ -84,6 +85,7 @@ impl MysqlDataSource {
     #[deprecated(since = "0.1.0", note = "Please use the parse schema function instead")]
     pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = MysqlDataSource {
+            id: Uuid::new_v4().to_string(),
             name: "mysql".into(),
             args: cli.try_into()?,
             shutdown: AtomicBool::new(false),
@@ -139,7 +141,7 @@ impl MysqlArgs {
                 .ok_or(Error::Io(IoError::ArgNotFound("table")))?
                 .to_string(),
             batch: channel.batch.unwrap_or(1000),
-            count: channel.count.unwrap_or(usize::MAX),
+            count: channel.count.unwrap_or(isize::MAX),
             concurrency: channel.concurrency.unwrap_or(1),
         })
     }
@@ -181,6 +183,7 @@ impl TryFrom<DataSourceSchema> for MysqlDataSource {
 
     fn try_from(value: DataSourceSchema) -> std::result::Result<Self, Self::Error> {
         Ok(MysqlDataSource {
+            id: Uuid::new_v4().to_string(),
             name: value.name,
             args: MysqlArgs::from_value(value.meta, value.channel)?,
             shutdown: AtomicBool::new(false),
@@ -196,6 +199,10 @@ use async_trait::async_trait;
 impl Name for MysqlDataSource {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn id(&self) -> &str {
+        &self.id
     }
 }
 
@@ -213,11 +220,9 @@ impl super::DataSourceChannel for MysqlDataSource {
         }
         if self.need_log() {
             //更新状态
-            DATA_SOURCE_MANAGER.write().await.update_final_status(
-                self.name(),
-                DataSourceChannelStatus::Ended,
-                false,
-            );
+            self.update_final_status(DataSourceChannelStatus::Ended, false)
+                .await;
+            println!("{} Ended", self.id());
         }
         Ok(())
     }
@@ -247,7 +252,8 @@ impl super::DataSourceChannel for MysqlDataSource {
         let pool = self.connect().expect("获取mysql连接失败!");
 
         let task = MysqlTask::from_args(
-            self.name.clone(),
+            self.id(),
+            self.name(),
             pool,
             shutdown_complete_tx,
             shutdown,
@@ -275,18 +281,17 @@ pub struct MysqlArgs {
 
     pub batch: usize,
 
-    pub count: usize,
+    pub count: isize,
 
     pub concurrency: usize,
 }
 
-use super::{
-    ChannelContext, DataSourceChannel, DataSourceChannelStatus, DataSourceContext,
-    DATA_SOURCE_MANAGER,
-};
+use super::{ChannelContext, DataSourceChannel, DataSourceChannelStatus, DataSourceContext};
 
 #[derive(Debug)]
 pub struct MysqlDataSource {
+    pub id: String,
+
     pub name: String,
 
     pub args: MysqlArgs,
@@ -305,6 +310,7 @@ impl TryFrom<Cli> for Box<MysqlDataSource> {
 
     fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
         let res = MysqlDataSource {
+            id: Uuid::new_v4().to_string(),
             name: "mysql".into(),
             args: value.try_into()?,
             shutdown: AtomicBool::new(false),

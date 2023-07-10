@@ -12,13 +12,11 @@ use tokio::sync::{
     Mutex,
 };
 
-use crate::{
-    core::{
-        error::{Error, IoError},
-        limit::token::TokenBuketLimiter,
-        log::incr_log,
-        traits::{Name, TaskDetailStatic},
-    },
+use crate::core::{
+    error::{Error, IoError},
+    limit::token::TokenBuketLimiter,
+    log::incr_log,
+    traits::{Name, TaskDetailStatic},
 };
 
 pub mod csv;
@@ -68,20 +66,30 @@ pub trait Exector: Send + Sync + TaskDetailStatic + Name {
     }
 
     async fn fetch_batch(&mut self) -> crate::Result<bool> {
-        let datas = self.handle_fetch().await?;
-        if datas.len() == 0 {
-            return Ok(true);
-        }
-        let datas = datas.clone();
-
-        match self.sender() {
-            Some(sender) => {
-                for data in datas {
-                    sender.send(data).await?;
+        match self.handle_fetch().await {
+            Ok(datas) => {
+                if datas.len() == 0 {
+                    return Ok(true);
                 }
+                let datas = datas.clone();
+
+                match self.sender() {
+                    Some(sender) => {
+                        for data in datas {
+                            if sender.is_closed() {
+                                return Ok(true);
+                            }
+                            sender.send(data).await?;
+                        }
+                        Ok(false)
+                    }
+                    None => Ok(true),
+                }
+            }
+            Err(e) => {
+                tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(false)
             }
-            None => Ok(true),
         }
     }
     ///1. 获取令牌
@@ -118,7 +126,7 @@ pub trait Exector: Send + Sync + TaskDetailStatic + Name {
                                 count.fetch_sub(1, Ordering::SeqCst);
                             }
                             if num % 100 == 0 {
-                                incr_log(&self.name(), num, 1).await;
+                                incr_log(&self.id(), num, 1).await;
                                 num = 0;
                             }
                         } else {
@@ -134,11 +142,13 @@ pub trait Exector: Send + Sync + TaskDetailStatic + Name {
                 Some(count) => match count.load(Ordering::SeqCst) {
                     x if x <= 0 => return Ok(true),
                     _ => {
-                        return Err(Error::Io(IoError::DataAccessError("no data".to_string())));
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        return Err(Error::Io(IoError::DataAccessError("no data")));
                     }
                 },
                 None => {
-                    return Err(Error::Io(IoError::DataAccessError("no data".to_string())));
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    return Err(Error::Io(IoError::DataAccessError("no data")));
                 }
             };
         }
@@ -159,7 +169,7 @@ pub trait Exector: Send + Sync + TaskDetailStatic + Name {
         }
         // watch.start("日志记录");
         if num != 0 {
-            incr_log(&self.name(), num, 1).await;
+            incr_log(&self.id(), num, 1).await;
         }
         // watch.stop();
         // watch.print_all_task_mils();

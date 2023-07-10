@@ -1,7 +1,4 @@
-use std::sync::{
-    atomic::{AtomicI64},
-    Arc,
-};
+use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
 use rdkafka::{
@@ -10,19 +7,18 @@ use rdkafka::{
 };
 use tokio::sync::Mutex;
 
-use crate::{
-    core::{
-        error::{Error, IoError},
-        fake::get_random_string,
-        limit::token::TokenBuketLimiter,
-        traits::{Name, TaskDetailStatic},
-    },
+use crate::core::{
+    error::{Error, IoError},
+    fake::get_random_string,
+    limit::token::TokenBuketLimiter,
+    traits::{Name, TaskDetailStatic},
 };
 
 use super::Exector;
 
 #[derive(Clone)]
 pub struct KafkaTaskExecutor {
+    pub id: String,
     pub task_name: String,
     pub count_rc: Option<Arc<AtomicI64>>,
     pub limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
@@ -32,6 +28,10 @@ pub struct KafkaTaskExecutor {
 impl Name for KafkaTaskExecutor {
     fn name(&self) -> &str {
         &self.task_name
+    }
+
+    fn id(&self) -> &str {
+        &self.id
     }
 }
 

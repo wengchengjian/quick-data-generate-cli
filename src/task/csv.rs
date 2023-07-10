@@ -16,6 +16,7 @@ use super::Task;
 
 #[derive(Debug)]
 pub struct CsvTask {
+    pub id: String,
     pub name: String,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
@@ -25,6 +26,10 @@ pub struct CsvTask {
 impl Name for CsvTask {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn id(&self) -> &str {
+        &self.id
     }
 }
 
@@ -43,18 +48,19 @@ impl Task for CsvTask {
 
 impl CsvTask {
     pub fn from_args(
-        name: String,
+        pid: &str,
+        name: &str,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
         count_rc: Option<Arc<AtomicI64>>,
     ) -> Self {
-        let name2 = name.clone();
         Self {
-            name,
+            id: pid.to_owned(),
+            name: name.to_owned(),
             shutdown_sender,
             shutdown,
-            executor: CsvTaskExecutor::new(count_rc, name2, limiter),
+            executor: CsvTaskExecutor::new(pid.to_owned(), count_rc, name.to_owned(), limiter),
         }
     }
 }

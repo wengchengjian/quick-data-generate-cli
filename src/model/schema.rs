@@ -55,11 +55,7 @@ impl DataSourceSchema {
             source: DataSourceEnum::Fake,
             meta: None,
             columns: None,
-            channel: Some(ChannelSchema {
-                batch: Some(5000),
-                concurrency: Some(1),
-                count: Some(usize::MAX),
-            }),
+            channel: Some(ChannelSchema::default()),
             sources: None,
         }
     }
@@ -70,7 +66,7 @@ pub struct ChannelSchema {
     // 批量提交数量
     pub batch: Option<usize>,
     pub concurrency: Option<usize>,
-    pub count: Option<usize>,
+    pub count: Option<isize>,
 }
 
 impl ChannelSchema {
@@ -78,7 +74,7 @@ impl ChannelSchema {
         Self {
             batch: Some(1000),
             concurrency: Some(1),
-            count: Some(usize::MAX),
+            count: Some(isize::MAX),
         }
     }
 }

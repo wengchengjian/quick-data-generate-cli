@@ -16,6 +16,7 @@ use crate::{
 use super::Task;
 
 pub struct KafkaTask {
+    pub id: String,
     pub name: String,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
@@ -24,6 +25,10 @@ pub struct KafkaTask {
 impl Name for KafkaTask {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn id(&self) -> &str {
+        todo!()
     }
 }
 
@@ -42,7 +47,8 @@ impl Task for KafkaTask {
 
 impl KafkaTask {
     pub fn from_args(
-        name: String,
+        pid: &str,
+        name: &str,
         producer: FutureProducer,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
@@ -51,11 +57,13 @@ impl KafkaTask {
     ) -> Self {
         let name2 = name.clone();
         Self {
-            name,
+            id: pid.to_owned(),
+            name: name.to_owned(),
             shutdown_sender,
             shutdown,
             executor: KafkaTaskExecutor {
-                task_name: name2,
+                id: pid.to_owned(),
+                task_name: name.to_owned(),
                 limiter,
                 producer,
                 count_rc,

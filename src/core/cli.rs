@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-use crate::{datasource::DataSourceEnum};
+use crate::datasource::DataSourceEnum;
 
 #[derive(Debug, StructOpt, Clone)]
 #[structopt(
@@ -44,7 +44,7 @@ pub struct Cli {
 
     /// 任务插入总数
     #[structopt(long)]
-    pub count: Option<usize>,
+    pub count: Option<isize>,
 
     /// 指定数据源schema
     #[structopt(long)]

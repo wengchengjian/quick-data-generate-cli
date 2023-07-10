@@ -35,7 +35,7 @@ pub enum IoError {
     UndefinedColumns,
 
     #[error("cannot access data: {}", _0)]
-    DataAccessError(String),
+    DataAccessError(&'static str),
 
     #[error("unkown data type:`{0}`")]
     UnkownTypeError(String),
@@ -84,6 +84,14 @@ impl From<KafkaError> for Error {
 
 impl From<mpsc::error::SendError<serde_json::Value>> for Error {
     fn from(value: mpsc::error::SendError<serde_json::Value>) -> Self {
+        match value {
+            _ => Error::Other(Box::new(value)),
+        }
+    }
+}
+
+impl From<mpsc::error::TrySendError<serde_json::Value>> for Error {
+    fn from(value: mpsc::error::TrySendError<serde_json::Value>) -> Self {
         match value {
             _ => Error::Other(Box::new(value)),
         }

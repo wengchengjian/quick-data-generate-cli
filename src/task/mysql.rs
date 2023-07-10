@@ -6,8 +6,12 @@ use mysql_async::Pool;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{
-    core::{limit::token::TokenBuketLimiter, shutdown::Shutdown, traits::{Name, TaskDetailStatic}},
-    datasource::{ChannelContext},
+    core::{
+        limit::token::TokenBuketLimiter,
+        shutdown::Shutdown,
+        traits::{Name, TaskDetailStatic},
+    },
+    datasource::ChannelContext,
     exec::{mysql::MysqlTaskExecutor, Exector},
 };
 
@@ -15,6 +19,7 @@ use super::Task;
 
 #[derive(Debug)]
 pub struct MysqlTask {
+    pub id: String,
     pub name: String,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
@@ -23,6 +28,10 @@ pub struct MysqlTask {
 impl Name for MysqlTask {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn id(&self) -> &str {
+        return &self.id;
     }
 }
 
@@ -41,7 +50,8 @@ impl Task for MysqlTask {
 
 impl MysqlTask {
     pub fn from_args(
-        name: String,
+        pid: &str,
+        name: &str,
         pool: Pool,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
@@ -51,13 +61,15 @@ impl MysqlTask {
     ) -> Self {
         let name2 = name.clone();
         Self {
-            name,
+            id: pid.to_owned(),
+            name: name.to_owned(),
             shutdown_sender,
             shutdown,
             executor: MysqlTaskExecutor::new(
+                pid.to_owned(),
                 pool,
                 count_rc,
-                name2,
+                name.to_owned(),
                 limiter,
                 channel.receiver,
                 channel.sender,

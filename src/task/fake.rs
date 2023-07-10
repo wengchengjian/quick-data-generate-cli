@@ -7,7 +7,7 @@ use crate::{
         shutdown::Shutdown,
         traits::{Name, TaskDetailStatic},
     },
-    datasource::{ChannelContext},
+    datasource::ChannelContext,
     exec::{fake::FakeTaskExecutor, Exector},
 };
 
@@ -17,12 +17,17 @@ impl Name for FakeTask {
     fn name(&self) -> &str {
         &self.name
     }
+
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl TaskDetailStatic for FakeTask {}
 
 #[derive(Debug)]
 pub struct FakeTask {
+    pub id: String,
     pub name: String,
     pub shutdown_sender: mpsc::Sender<()>,
     pub shutdown: Shutdown,
@@ -42,17 +47,18 @@ impl Task for FakeTask {
 
 impl FakeTask {
     pub fn from_args(
-        name: String,
+        pid: &str,
+        name: &str,
         shutdown_sender: mpsc::Sender<()>,
         shutdown: Shutdown,
         channel: ChannelContext,
     ) -> Self {
-        let name2 = name.clone();
         Self {
-            name,
+            id: pid.to_owned(),
+            name: name.to_owned(),
             shutdown_sender,
             shutdown,
-            executor: FakeTaskExecutor::new(name2, channel.sender),
+            executor: FakeTaskExecutor::new(pid.to_owned(), name.to_owned(), channel.sender),
         }
     }
 }

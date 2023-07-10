@@ -31,7 +31,7 @@ pub fn parse_schema(path: &PathBuf) -> Result<Schema> {
     Ok(schema)
 }
 
-pub fn parse_mpsc_from_schema(
+pub async fn parse_mpsc_from_schema(
     schema: &DataSourceSchema,
     source_map: HashMap<&str, DataSourceSchema>,
 ) -> Result<Box<dyn DataSourceChannel>> {
@@ -57,7 +57,7 @@ pub fn parse_mpsc_from_schema(
             Some(source_schema) => {
                 if source_schema.name.ne(&schema.name) {
                     let schema = (*source_schema).to_owned();
-                    let datasource = parse_datasource_from_schema(schema)?;
+                    let datasource = parse_datasource_from_schema(schema).await?;
                     producer.push(datasource);
                 }
             }
@@ -67,21 +67,31 @@ pub fn parse_mpsc_from_schema(
         }
     }
 
-    let consumer: Box<dyn DataSourceChannel> = parse_datasource_from_schema(schema.clone())?;
+    let consumer: Box<dyn DataSourceChannel> = parse_datasource_from_schema(schema.clone()).await?;
 
     let data_source_channel = MpscDataSourceChannel::new(producer, consumer);
 
     return Ok(Box::new(data_source_channel));
 }
 
-pub fn parse_datasource_from_schema(
+pub async fn parse_datasource_from_schema(
     schema: DataSourceSchema,
 ) -> Result<Box<dyn DataSourceChannel>> {
     let mut schema = schema;
     if let None = schema.channel {
         let _ = schema.channel.insert(ChannelSchema::default());
     }
+    let data_manager = DATA_SOURCE_MANAGER.read().await;
+    let contains_key = data_manager.contains_schema(&schema.name);
 
+    drop(data_manager);
+
+    if !contains_key {
+        DATA_SOURCE_MANAGER
+            .write()
+            .await
+            .put_schema(&schema.name, schema.clone());
+    }
     match schema.source {
         DataSourceEnum::Mysql => Ok(Box::new(MysqlDataSource::try_from(schema)?)),
         DataSourceEnum::Kafka => Ok(Box::new(KafkaDataSource::try_from(schema)?)),
@@ -143,10 +153,12 @@ pub async fn parse_datasources_from_schema(
     let sources = &schema.sources;
 
     for source in sources {
-        DATA_SOURCE_MANAGER
-            .write()
-            .await
-            .put_schema(&source.name, source.clone());
+        {
+            DATA_SOURCE_MANAGER
+                .write()
+                .await
+                .put_schema(&source.name, source.clone());
+        }
 
         // 整合参数
         let source_map: HashMap<&str, DataSourceSchema> = schema
@@ -160,7 +172,7 @@ pub async fn parse_datasources_from_schema(
             })
             .collect();
 
-        outputs.push(parse_mpsc_from_schema(source, source_map)?);
+        outputs.push(parse_mpsc_from_schema(source, source_map).await?);
     }
     Ok(outputs)
 }
@@ -192,7 +204,7 @@ pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
         Some(meta),
         None,
         channel,
-        None,
+        Some(vec![DEFAULT_FAKE_DATASOURCE.to_owned()]),
     );
 
     sources.push(source);

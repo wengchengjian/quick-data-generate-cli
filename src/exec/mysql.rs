@@ -23,6 +23,7 @@ use super::Exector;
 
 #[derive(Debug, Clone)]
 pub struct MysqlTaskExecutor {
+    pub id: String,
     pub pool: Pool,
     pub limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     pub count: Option<Arc<AtomicI64>>,
@@ -35,12 +36,17 @@ impl Name for MysqlTaskExecutor {
     fn name(&self) -> &str {
         &self.task_name
     }
+
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl TaskDetailStatic for MysqlTaskExecutor {}
 
 impl MysqlTaskExecutor {
     pub fn new(
+        pid: String,
         pool: Pool,
         count: Option<Arc<AtomicI64>>,
         task_name: String,
@@ -49,6 +55,7 @@ impl MysqlTaskExecutor {
         sender: Option<Sender<serde_json::Value>>,
     ) -> Self {
         Self {
+            id: pid,
             pool,
             count,
             task_name,
@@ -154,11 +161,7 @@ impl Exector for MysqlTaskExecutor {
 
     async fn handle_batch(&mut self, vals: Vec<serde_json::Value>) -> crate::Result<()> {
         let (column_names, column_name_vals) = self.get_columns_name().await?;
-        let _schema = DATA_SOURCE_MANAGER
-            .read()
-            .await
-            .get_schema(self.name())
-            .ok_or(Error::Io(IoError::SchemaNotFound))?;
+
         let mut insert_header = format!(
             "INSERT DELAYED  INTO {}.{} ({}) VALUES ",
             self.database().await?,

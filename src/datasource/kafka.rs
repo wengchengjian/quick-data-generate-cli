@@ -31,9 +31,10 @@ use tokio::{
     sync::{mpsc, Mutex},
     time::timeout,
 };
-
+use uuid::Uuid;
 #[derive(Debug)]
 pub struct KafkaDataSource {
+    pub id: String,
     pub name: String,
 }
 
@@ -49,7 +50,7 @@ pub struct KafkaArgs {
 
     pub batch: usize,
 
-    pub count: usize,
+    pub count: isize,
 }
 
 impl KafkaArgs {
@@ -68,7 +69,7 @@ impl KafkaArgs {
                 .to_string(),
             port: meta["port"].as_u64().unwrap_or(3306) as u16,
             batch: channel.batch.unwrap_or(1000),
-            count: channel.count.unwrap_or(usize::MAX),
+            count: channel.count.unwrap_or(isize::MAX),
             concurrency: channel.concurrency.unwrap_or(usize::MAX),
             topic: meta["topic"]
                 .as_str()
@@ -167,6 +168,7 @@ impl KafkaDataSource {
     #[deprecated(since = "0.1.0", note = "Please use the parse schema function instead")]
     pub(crate) fn from_cli(_cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = KafkaDataSource {
+            id: Uuid::new_v4().to_string(),
             name: "kafka".into(),
         };
 
@@ -178,6 +180,10 @@ impl Name for KafkaDataSource {
     fn name(&self) -> &str {
         &self.name
     }
+
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl TaskDetailStatic for KafkaDataSource {}
@@ -185,7 +191,7 @@ impl TaskDetailStatic for KafkaDataSource {}
 #[async_trait]
 impl DataSourceChannel for KafkaDataSource {
     async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
-        if let Some(_schema) = DATA_SOURCE_MANAGER.read().await.get_schema(self.name()) {
+        if let Some(_schema) = self.schema().await {
             if let Some(topic) = self.meta().await.unwrap_or(json!({}))["topic"].as_str() {
                 let ref topics = vec![topic];
                 match self.get_consumer(DEFAULT_GROUP.to_string(), topics).await {
@@ -216,7 +222,8 @@ impl DataSourceChannel for KafkaDataSource {
         match self.get_provider().await {
             Ok(producer) => {
                 let task = KafkaTask::from_args(
-                    self.name.clone(),
+                    self.id(),
+                    self.name(),
                     producer,
                     shutdown_complete_tx,
                     shutdown,
@@ -237,6 +244,7 @@ impl TryFrom<Cli> for Box<KafkaDataSource> {
 
     fn try_from(_value: Cli) -> std::result::Result<Self, Self::Error> {
         let res = KafkaDataSource {
+            id: Uuid::new_v4().to_string(),
             name: "kafka".into(),
         };
 
@@ -252,7 +260,7 @@ impl TryInto<KafkaArgs> for Cli {
             host: self.host,
             port: self.port.unwrap_or(9092),
             batch: self.batch.unwrap_or(5000),
-            count: self.count.unwrap_or(isize::max_value() as usize),
+            count: self.count.unwrap_or(isize::max_value()),
             concurrency: self.concurrency.unwrap_or(1),
             topic: self.topic.ok_or(Error::Io(IoError::ArgNotFound("topic")))?,
         })
@@ -263,6 +271,9 @@ impl TryFrom<DataSourceSchema> for KafkaDataSource {
     type Error = Error;
 
     fn try_from(value: DataSourceSchema) -> std::result::Result<Self, Self::Error> {
-        Ok(KafkaDataSource { name: value.name })
+        Ok(KafkaDataSource {
+            id: Uuid::new_v4().to_string(),
+            name: value.name,
+        })
     }
 }

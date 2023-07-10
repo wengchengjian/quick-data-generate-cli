@@ -63,7 +63,7 @@ pub struct ClickHouseArgs {
 
     pub batch: usize,
 
-    pub count: usize,
+    pub count: isize,
 }
 
 #[derive(Debug)]

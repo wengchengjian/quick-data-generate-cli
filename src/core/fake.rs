@@ -189,9 +189,9 @@ pub fn get_random_time_en() -> time::Time {
 pub fn get_random_date_between_str(start: &str, end: &str) -> time::OffsetDateTime {
     let start = format!("{} +08:00:00", start);
     let end = format!("{} +08:00:00", end);
-    let start = time::OffsetDateTime::parse(&start, &DATE_TIME_FORMAT)
+    let start = time::OffsetDateTime::parse(&start, &FORMAT_DATE_TIME)
         .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
-    let end = time::OffsetDateTime::parse(&end, &DATE_TIME_FORMAT)
+    let end = time::OffsetDateTime::parse(&end, &FORMAT_DATE_TIME)
         .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
     DateTimeBetween(start, end).fake()
 }
@@ -199,9 +199,9 @@ pub fn get_random_date_between_str(start: &str, end: &str) -> time::OffsetDateTi
 pub fn get_random_date_between_str_to(start: &str, end: &str) -> String {
     let start = format!("{} +08:00:00", start);
     let end = format!("{} +08:00:00", end);
-    let start = time::OffsetDateTime::parse(&start, &DATE_TIME_FORMAT)
+    let start = time::OffsetDateTime::parse(&start, &FORMAT_DATE_TIME)
         .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
-    let end = time::OffsetDateTime::parse(&end, &DATE_TIME_FORMAT)
+    let end = time::OffsetDateTime::parse(&end, &FORMAT_DATE_TIME)
         .expect("时间格式错误，请满足[year]-[month]-[day] [hour]:[minute]:[second]");
     let time: OffsetDateTime = DateTimeBetween(start, end).fake();
 
@@ -227,7 +227,7 @@ pub fn get_random_timestamp_string() -> String {
         time::OffsetDateTime::UNIX_EPOCH,
         datetime!(2038-01-19 03:14:07 UTC),
     )
-    .format(&DATE_TIME_FORMAT)
+    .format(&FORMAT_DATE_TIME)
     .unwrap()
 }
 
@@ -243,7 +243,7 @@ pub fn get_random_timestamp_zh_between_string(
     end: time::OffsetDateTime,
 ) -> String {
     get_random_date_between_zh(start, end)
-        .format(&DATE_TIME_FORMAT)
+        .format(&FORMAT_DATE_TIME)
         .unwrap()
 }
 
@@ -259,7 +259,7 @@ pub fn get_random_datetime_zh_between_string(
     end: time::OffsetDateTime,
 ) -> String {
     get_random_date_between_zh(start, end)
-        .format(&DATE_TIME_FORMAT)
+        .format(&FORMAT_DATE_TIME)
         .unwrap()
 }
 
@@ -275,7 +275,7 @@ pub fn get_random_datetime_string() -> String {
         time::OffsetDateTime::UNIX_EPOCH,
         datetime!(2038-01-19 03:14:07 UTC),
     )
-    .format(&DATE_TIME_FORMAT)
+    .format(&FORMAT_DATE_TIME)
     .unwrap()
 }
 

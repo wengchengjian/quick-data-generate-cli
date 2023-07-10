@@ -22,6 +22,7 @@ pub fn parse_json_from_column(columns: &Vec<DataSourceColumn>) -> Json {
     for column in columns {
         res[&column.name] = json!(column.data_type().to_string());
     }
+
     res
 }
 
@@ -64,7 +65,7 @@ impl DataSourceColumn {
                 .into_iter()
                 .map(|(key, value)| DataSourceColumn {
                     name: key.clone(),
-                    data_type: DataTypeEnum::parse_type_from_value(value),
+                    data_type: DataTypeEnum::from_str(value.as_str().unwrap_or("unkown")).unwrap(),
                 })
                 .collect();
         } else {
@@ -207,8 +208,8 @@ impl DataTypeEnum {
 }
 
 impl DataTypeEnum {
-    pub fn from_string(str: String) -> Result<Self> {
-        let data_type = DataTypeEnum::from_str(str.as_str())?;
+    pub fn from_string(str: &str) -> Result<Self> {
+        let data_type = DataTypeEnum::from_str(str)?;
         Ok(data_type)
     }
 }

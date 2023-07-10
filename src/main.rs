@@ -11,7 +11,7 @@ use crate::core::cli::Cli;
 use crate::core::error::Result;
 use crate::core::log::{StaticsLogger, STATICS_LOGGER};
 use crate::datasource::{ChannelContext, DataSourceChannel};
-use datasource::{DataSourceContext, DelegatedDataSource};
+use datasource::{DataSourceChannelStatus, DataSourceContext, DelegatedDataSource};
 use model::schema::Schema;
 use structopt::StructOpt;
 
@@ -56,7 +56,8 @@ pub fn create_context(limit: Option<usize>, skip: bool) -> DataSourceContext {
 pub async fn create_delegate_output(cli: Cli) -> Result<(DelegatedDataSource, DataSourceContext)> {
     let cli_args = cli.clone();
     // 获取所有数据源
-    let (datasources, interval, context) = parse_datasource(cli_args).await.expect("解析数据源失败");
+    let (datasources, interval, context) =
+        parse_datasource(cli_args).await.expect("解析数据源失败");
 
     if datasources.len() == 0 {
         return Err(Error::Io(IoError::ParseSchemaError));
@@ -101,16 +102,41 @@ pub async fn execute(cli: Cli) -> Result<()> {
     let path = output_schema_to_dir(&context.id, &schema).await;
     println!("schema文件输出至: {:?}", path);
     if !done {
-        // 关闭所有任务
-        DATA_SOURCE_MANAGER.write().await.stop_all_task().await;
-        // 等待所有任务关闭
-        DATA_SOURCE_MANAGER.read().await.await_all_done().await;
+        {
+            // 关闭所有任务
+            DATA_SOURCE_MANAGER.write().await.stop_all_task().await;
+        }
+        {
+            // 等待所有任务关闭
+            DATA_SOURCE_MANAGER.read().await.await_all_done().await;
+        }
     }
     Ok(())
 }
 
 async fn await_all_done() {
-    DATA_SOURCE_MANAGER.read().await.await_all_done().await
+    loop {
+        let data_manager = DATA_SOURCE_MANAGER.read().await;
+        let mut count = data_manager.final_status.iter().count();
+
+        for val in data_manager.final_status.values() {
+            match val {
+                DataSourceChannelStatus::Running => continue,
+                DataSourceChannelStatus::Stopped(_) => count -= 1,
+                DataSourceChannelStatus::Terminated(_) => count -= 1,
+                DataSourceChannelStatus::Inited => continue,
+                DataSourceChannelStatus::Ended => count -= 1,
+                DataSourceChannelStatus::Starting => continue,
+            }
+        }
+        // 解锁
+        drop(data_manager);
+
+        if count == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await
+    }
 }
 
 #[cfg(target_os = "windows")]

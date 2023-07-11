@@ -1,8 +1,10 @@
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use core::fmt;
+use sqlx::{Pool, Sqlite};
 use std::{
     collections::HashMap,
+    fmt::Display,
     str::FromStr,
     sync::{
         atomic::{AtomicI64, AtomicU64, Ordering},
@@ -46,7 +48,7 @@ pub mod fake;
 pub mod kafka;
 pub mod mysql;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DataSourceEnum {
     // ClickHouse,
     Mysql,
@@ -58,6 +60,17 @@ pub enum DataSourceEnum {
     Csv,
     Fake, //
           //    SqlServer,
+}
+
+impl Display for DataSourceEnum {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DataSourceEnum::Mysql => write!(f, "Mysql"),
+            DataSourceEnum::Kafka => write!(f, "Kafka"),
+            DataSourceEnum::Csv => write!(f, "Csv"),
+            DataSourceEnum::Fake => write!(f, "Fake"),
+        }
+    }
 }
 
 impl DataSourceEnum {
@@ -95,6 +108,7 @@ impl FromStr for DataSourceEnum {
             "kafka" => Ok(DataSourceEnum::Kafka),
             //            "elasticsearch" => Ok(SourceEnum::ElasticSearch),
             "csv" => Ok(DataSourceEnum::Csv),
+            "fake" => Ok(DataSourceEnum::Fake),
             //            "sqlserver" => Ok(SourceEnum::SqlServer),
             _ => Err("不支持该输出源".into()),
         }
@@ -174,17 +188,30 @@ pub struct DataSourceStatistics {
     pub start_time: SystemTime,
 }
 
+/// 用于在一个传输会话中共享的数据结构
+/// 目前共享的有meta, columns
+/// sessionId 检索session, 同一个namespace下的channel sessionId相同
+pub struct DataSourceTransferSession {
+    pub id: String,
+
+    pub meta: Option<Json>,
+
+    pub columns: Option<(Json, Vec<DataSourceColumn>)>,
+}
+
 /// 后续图形化展示数据结构
 pub struct DataSourceTreeNode {
     pub name: String,
 }
 
 pub struct DataSourceManager {
+    pub pool: Option<Pool<Sqlite>>,
     pub final_status: HashMap<String, DataSourceChannelStatus>,
     pub will_status: HashMap<String, DataSourceChannelStatus>,
     pub schemas: HashMap<String, DataSourceSchema>,
     pub columns: HashMap<String, Vec<DataSourceColumn>>,
     pub data_statistics_map: HashMap<String, DataSourceStatistics>,
+    pub sessions: HashMap<String, DataSourceTransferSession>,
 }
 
 impl DataSourceStatistics {
@@ -200,12 +227,18 @@ impl DataSourceStatistics {
 impl DataSourceManager {
     pub fn new() -> Self {
         Self {
+            pool: None,
             final_status: HashMap::new(),
             will_status: HashMap::new(),
             schemas: HashMap::new(),
             data_statistics_map: HashMap::new(),
             columns: HashMap::new(),
+            sessions: HashMap::new(),
         }
+    }
+
+    pub fn pool(&self) -> Option<&Pool<Sqlite>> {
+        return self.pool.as_ref();
     }
 
     pub fn get_all_schema(&self) -> Vec<DataSourceSchema> {

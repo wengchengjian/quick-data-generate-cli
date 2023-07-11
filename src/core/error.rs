@@ -97,3 +97,11 @@ impl From<mpsc::error::TrySendError<serde_json::Value>> for Error {
         }
     }
 }
+
+impl From<sqlx::Error> for Error {
+    fn from(value: sqlx::Error) -> Self {
+        match value {
+            _ => Error::Other(Box::new(value)),
+        }
+    }
+}

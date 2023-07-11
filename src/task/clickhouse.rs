@@ -1,13 +1,10 @@
-
 use clickhouse::{inserter::Inserter, Client};
 use serde_json::Value;
-
 
 #[derive(Debug)]
 pub struct ClickHouseTask {
     pub name: String,
 }
-
 
 impl ClickHouseTask {
     pub fn new(name: String, _client: Client, _batch: usize, _count: usize) -> ClickHouseTask {

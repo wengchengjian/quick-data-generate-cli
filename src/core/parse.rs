@@ -199,6 +199,7 @@ pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
     let meta = cli.source.unwrap().parse_meta_from_cli(cli.clone())?;
 
     let source = DataSourceSchema::new(
+        0,
         "default".to_owned(),
         cli.source.unwrap(),
         Some(meta),

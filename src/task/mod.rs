@@ -1,6 +1,12 @@
 use async_trait::async_trait;
 
-use crate::{core::{shutdown::Shutdown, traits::{Name, TaskDetailStatic}}, exec::Exector};
+use crate::{
+    core::{
+        shutdown::Shutdown,
+        traits::{Name, TaskDetailStatic},
+    },
+    exec::Exector,
+};
 
 pub mod clickhouse;
 pub mod csv;

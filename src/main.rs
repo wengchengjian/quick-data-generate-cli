@@ -21,6 +21,7 @@ use tokio::sync::RwLock;
 // use tracing_subscriber::FmtSubscriber;
 pub mod core;
 pub mod datasource;
+pub mod db;
 pub mod exec;
 pub mod macros;
 pub mod model;

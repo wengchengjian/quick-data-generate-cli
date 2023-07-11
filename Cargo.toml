@@ -36,6 +36,7 @@ bloom = "0.3.2"
 bytes = "1.4.0"
 async-recursion = "1.0.4"
 uuid = "1.4.0"
+sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "sqlite" ] }
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["async_tokio", "html_reports"] }
 tokio-test = "*"

@@ -313,6 +313,8 @@ impl FromStr for DataTypeEnum {
 mod tests {
     use std::path::PathBuf;
 
+    use tokio_test::block_on;
+
     use crate::core::parse::{parse_datasources_from_schema, parse_schema};
 
     use super::*;
@@ -334,26 +336,30 @@ mod tests {
 
     #[test]
     fn test_merge_columns() {
-        let path_buf = PathBuf::from(SCHEMA_PATH);
+        block_on(async {
+            let path_buf = PathBuf::from(SCHEMA_PATH);
 
-        let schema = parse_schema(&path_buf).expect("解析schema文件失败");
+            let schema = parse_schema(&path_buf).expect("解析schema文件失败");
 
-        let outputs1 = parse_datasources_from_schema(schema).expect("解析output失败");
-        let c1 = outputs1[0].columns().unwrap();
-        let c2 = outputs1[1].columns().unwrap();
+            let outputs1 = parse_datasources_from_schema(schema)
+                .await
+                .expect("解析output失败");
+            let c1 = outputs1[0].columns().await.unwrap();
+            let c2 = outputs1[1].columns().await.unwrap();
 
-        let mut _c3 = vec![];
-        if outputs1[0].name().eq("mysql-output") {
-            _c3 = DataSourceColumn::merge_columns(c1, c2);
-        } else {
-            _c3 = DataSourceColumn::merge_columns(c2, c1);
-        }
+            let mut _c3 = vec![];
+            if outputs1[0].name().eq("mysql-output") {
+                _c3 = DataSourceColumn::merge_columns(&c1, &c2);
+            } else {
+                _c3 = DataSourceColumn::merge_columns(&c2, &c1);
+            }
 
-        let c4m = DataSourceColumn::map_columns(&_c3);
-        assert!((*c4m.get("PACKET_ID").unwrap()).eq(&DataTypeEnum::UInt64(FixedValue::None)));
-        assert!((*c4m.get("PACKET_NAME").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
-        assert!((*c4m.get("ip").unwrap()).eq(&DataTypeEnum::IPv4(FixedValue::None)));
-        assert!((*c4m.get("password").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
-        assert!((*c4m.get("username").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
+            let c4m = DataSourceColumn::map_columns(&_c3);
+            assert!((*c4m.get("PACKET_ID").unwrap()).eq(&DataTypeEnum::UInt64(FixedValue::None)));
+            assert!((*c4m.get("PACKET_NAME").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
+            assert!((*c4m.get("ip").unwrap()).eq(&DataTypeEnum::IPv4(FixedValue::None)));
+            assert!((*c4m.get("password").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
+            assert!((*c4m.get("username").unwrap()).eq(&DataTypeEnum::String(FixedValue::None)));
+        });
     }
 }

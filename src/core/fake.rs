@@ -14,12 +14,12 @@ use fake::{Fake, Faker};
 use rand::{thread_rng, Rng};
 use serde_json::json;
 
-static DATE_TIME_FORMAT: &[FormatItem<'_>] = format_description!(
+pub static DATE_TIME_FORMAT: &[FormatItem<'_>] = format_description!(
     "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour \
     sign:mandatory]:[offset_minute]:[offset_second]"
 );
 
-static FORMAT_DATE_TIME: &[FormatItem<'_>] =
+pub static FORMAT_DATE_TIME: &[FormatItem<'_>] =
     format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");
 
 pub fn get_random_u8() -> u8 {

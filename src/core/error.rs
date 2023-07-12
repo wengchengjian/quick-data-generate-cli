@@ -28,6 +28,9 @@ pub enum IoError {
     #[error("cannot found schema error")]
     SchemaNotFound,
 
+    #[error("cannot found meta error")]
+    MetaNotFound,
+
     #[error("parse json error: {}", _0)]
     ParseJsonError(#[source] serde_json::Error),
 

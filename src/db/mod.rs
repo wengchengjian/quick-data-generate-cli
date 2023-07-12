@@ -7,9 +7,10 @@ use sqlx::{
 
 use crate::datasource::DATA_SOURCE_MANAGER;
 
-pub mod insert;
 pub mod delete;
+pub mod insert;
 pub mod query;
+pub mod update;
 
 pub const DB_NAME: &'static str = "data.db";
 pub const SCHEMA_TABLE_NAME: &'static str = "data_source_schema";
@@ -52,6 +53,7 @@ pub async fn create_pool() -> crate::Result<Pool<Sqlite>> {
 }
 
 pub async fn init(conn: &mut SqliteConnection) -> crate::Result<()> {
+    // 建表
     conn.execute(
         "
         CREATE TABLE IF NOT EXISTS data_source_schema (
@@ -66,6 +68,10 @@ pub async fn init(conn: &mut SqliteConnection) -> crate::Result<()> {
     ",
     )
     .await?;
+
+    // 建索引
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS schema_unq_name on data_source_schema (name)").await?;
+
     Ok(())
 }
 

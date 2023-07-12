@@ -22,11 +22,15 @@ use crate::task::Task;
 use crate::Json;
 
 impl MysqlDataSource {
-    pub fn connect(&mut self) -> Result<Pool> {
+    pub async fn connect(&mut self) -> Result<Pool> {
         //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
             "mysql://{}:{}@{}:{}/{}?&compression=fast&stmt_cache_size=256",
-            self.args.user, self.args.password, self.args.host, self.args.port, self.args.database
+            self.meta().await?["user"].as_str().unwrap(),
+            self.meta().await?["password"].as_str().unwrap(),
+            self.meta().await?["host"].as_str().unwrap(),
+            self.meta().await?["port"].as_str().unwrap(),
+            self.meta().await?["database"].as_str().unwrap(),
         );
 
         let pool = self.pool_cache.entry(url.clone()).or_insert_with(|| {
@@ -87,9 +91,6 @@ impl MysqlDataSource {
         let res = MysqlDataSource {
             id: Uuid::new_v4().to_string(),
             name: "mysql".into(),
-            args: cli.try_into()?,
-            shutdown: AtomicBool::new(false),
-            columns: vec![],
             pool_cache: HashMap::new(),
             sources: vec!["fake_data_source".to_owned()],
         };
@@ -185,9 +186,6 @@ impl TryFrom<DataSourceSchema> for MysqlDataSource {
         Ok(MysqlDataSource {
             id: Uuid::new_v4().to_string(),
             name: value.name,
-            args: MysqlArgs::from_value(value.meta, value.channel)?,
-            shutdown: AtomicBool::new(false),
-            columns: DataSourceColumn::get_columns_from_schema(&value.columns.unwrap_or(json!(0))),
             pool_cache: HashMap::new(),
             sources: value.sources.unwrap_or(vec![]),
         })
@@ -228,14 +226,17 @@ impl super::DataSourceChannel for MysqlDataSource {
     }
     async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
         // 获取连接池
-        let pool = self.connect().expect("获取mysql连接失败!");
+        let pool = self.connect().await.expect("获取mysql连接失败!");
 
         let conn = pool.get_conn().await.expect("获取mysql连接失败!");
         // 获取字段定义
-        let columns =
-            MysqlDataSource::get_columns_define(conn, &self.args.database, &self.args.table)
-                .await
-                .expect("获取字段定义失败");
+        let columns = MysqlDataSource::get_columns_define(
+            conn,
+            self.meta().await.unwrap()["database"].as_str().unwrap(),
+            self.meta().await.unwrap()["table"].as_str().unwrap(),
+        )
+        .await
+        .expect("获取字段定义失败");
 
         return Some(columns);
     }
@@ -249,7 +250,7 @@ impl super::DataSourceChannel for MysqlDataSource {
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Option<Box<dyn Task>> {
         // 获取连接池
-        let pool = self.connect().expect("获取mysql连接失败!");
+        let pool = self.connect().await.expect("获取mysql连接失败!");
 
         let task = MysqlTask::from_args(
             self.id(),
@@ -294,12 +295,6 @@ pub struct MysqlDataSource {
 
     pub name: String,
 
-    pub args: MysqlArgs,
-
-    pub columns: Vec<DataSourceColumn>,
-
-    pub shutdown: AtomicBool,
-
     pub pool_cache: HashMap<String, Pool>,
 
     pub sources: Vec<String>,
@@ -312,9 +307,6 @@ impl TryFrom<Cli> for Box<MysqlDataSource> {
         let res = MysqlDataSource {
             id: Uuid::new_v4().to_string(),
             name: "mysql".into(),
-            args: value.try_into()?,
-            shutdown: AtomicBool::new(false),
-            columns: vec![],
             pool_cache: HashMap::new(),
             sources: vec!["fake_data_source".to_owned()],
         };

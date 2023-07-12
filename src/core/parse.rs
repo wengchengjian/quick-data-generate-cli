@@ -206,6 +206,8 @@ pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
         None,
         channel,
         Some(vec![DEFAULT_FAKE_DATASOURCE.to_owned()]),
+        time::OffsetDateTime::now_utc(),
+        time::OffsetDateTime::now_utc(),
     );
 
     sources.push(source);

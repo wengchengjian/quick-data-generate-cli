@@ -6,7 +6,10 @@ use crate::{
     Json,
 };
 
-use super::check::{DEFAULT_BATCH_SIZE, MIN_THREAD_SIZE};
+use super::{
+    check::{DEFAULT_BATCH_SIZE, MIN_THREAD_SIZE},
+    error::{Error, IoError},
+};
 
 pub trait Name {
     fn id(&self) -> &str;
@@ -18,7 +21,10 @@ pub trait Name {
 #[async_trait]
 pub trait TaskDetailStatic: Name {
     async fn is_shutdown(&self) -> bool {
-        DATA_SOURCE_MANAGER.read().await.is_shutdown(self.id())
+        DATA_SOURCE_MANAGER
+            .read()
+            .await
+            .is_shutdown(self.id(), self.name())
     }
 
     async fn update_final_status(
@@ -26,17 +32,19 @@ pub trait TaskDetailStatic: Name {
         status: DataSourceChannelStatus,
         overide: bool,
     ) -> Option<DataSourceChannelStatus> {
-        DATA_SOURCE_MANAGER
-            .write()
-            .await
-            .update_final_status(self.id(), status, overide)
+        DATA_SOURCE_MANAGER.write().await.update_final_status(
+            self.id(),
+            self.name(),
+            status,
+            overide,
+        )
     }
 
     async fn schema(&self) -> Option<DataSourceSchema> {
         DATA_SOURCE_MANAGER
             .read()
             .await
-            .get_schema(self.id())
+            .get_schema(self.name())
             .cloned()
     }
 
@@ -76,14 +84,18 @@ pub trait TaskDetailStatic: Name {
         0
     }
 
-    async fn meta(&self) -> Option<Json> {
+    async fn meta(&self) -> crate::Result<&Json> {
         if let Some(schema) = self.schema().await {
-            return schema.meta.as_ref().cloned();
+            return Ok(schema.meta.as_ref().unwrap());
         }
-        None
+        Err(Error::Io(IoError::MetaNotFound))
     }
 
-    async fn columns(&self) -> Option<Vec<DataSourceColumn>> {
-        DATA_SOURCE_MANAGER.read().await.columns(self.id()).cloned()
+    async fn columns(&self) -> crate::Result<&Vec<DataSourceColumn>> {
+        DATA_SOURCE_MANAGER
+            .read()
+            .await
+            .columns(self.id())
+            .ok_or(Error::Io(IoError::UndefinedColumns))
     }
 }

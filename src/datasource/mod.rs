@@ -197,6 +197,26 @@ pub struct DataSourceTransferSession {
     pub meta: Option<Json>,
 
     pub columns: Option<(Json, Vec<DataSourceColumn>)>,
+
+    pub final_status: HashMap<String, DataSourceChannelStatus>,
+
+    pub will_status: HashMap<String, DataSourceChannelStatus>,
+}
+
+impl DataSourceTransferSession {
+    pub fn new(
+        id: String,
+        meta: Option<Json>,
+        columns: Option<(Json, Vec<DataSourceColumn>)>,
+    ) -> Self {
+        Self {
+            id,
+            meta,
+            columns,
+            final_status: HashMap::new(),
+            will_status: HashMap::new(),
+        }
+    }
 }
 
 /// 后续图形化展示数据结构
@@ -206,10 +226,7 @@ pub struct DataSourceTreeNode {
 
 pub struct DataSourceManager {
     pub pool: Option<Pool<Sqlite>>,
-    pub final_status: HashMap<String, DataSourceChannelStatus>,
-    pub will_status: HashMap<String, DataSourceChannelStatus>,
     pub schemas: HashMap<String, DataSourceSchema>,
-    pub columns: HashMap<String, Vec<DataSourceColumn>>,
     pub data_statistics_map: HashMap<String, DataSourceStatistics>,
     pub sessions: HashMap<String, DataSourceTransferSession>,
 }
@@ -228,11 +245,8 @@ impl DataSourceManager {
     pub fn new() -> Self {
         Self {
             pool: None,
-            final_status: HashMap::new(),
-            will_status: HashMap::new(),
             schemas: HashMap::new(),
             data_statistics_map: HashMap::new(),
-            columns: HashMap::new(),
             sessions: HashMap::new(),
         }
     }
@@ -306,8 +320,10 @@ impl DataSourceManager {
         };
     }
 
-    pub fn columns(&self, name: &str) -> Option<&Vec<DataSourceColumn>> {
-        self.columns.get(name)
+    pub fn columns(&self, session_id: &str) -> Option<&Vec<DataSourceColumn>> {
+        self.sessions
+            .get(session_id)
+            .map(|session| session.columns.map(|columns| &columns.1).unwrap())
     }
 
     pub fn put_schema(&mut self, name: &str, schema: DataSourceSchema) -> Option<DataSourceSchema> {
@@ -329,19 +345,34 @@ impl DataSourceManager {
     ///更新will数据源状态,返回之前的状态
     pub async fn update_will_status(
         &mut self,
+        session_id: &str,
         name: &str,
         status: DataSourceChannelStatus,
-    ) -> Option<DataSourceChannelStatus> {
-        self.will_status.insert(name.to_owned(), status)
+    ) {
+        self.sessions.get_mut(session_id).is_some_and(|session| {
+            session.will_status.insert(name.to_owned(), status);
+            return true;
+        });
     }
 
-    pub async fn update_datasource_columns(&mut self, name: &str, columns: Vec<DataSourceColumn>) {
-        self.columns.insert(name.to_owned(), columns);
+    pub async fn update_datasource_columns(
+        &mut self,
+        session_id: &str,
+        name: &str,
+        columns: Vec<DataSourceColumn>,
+    ) {
+        self.sessions.get_mut(session_id).is_some_and(|session| {
+            session.columns.as_mut().is_some_and(|item| {
+                item.1 = columns;
+                return true;
+            });
+            return true;
+        });
     }
 
     /// TODO: 直接定义可变递归函数，编译器会报错，不支持多个可变借用, 需要优化成bfs
     #[async_recursion]
-    pub async fn notify_update_sources(&mut self, name: &str) {
+    pub async fn notify_update_sources(&mut self, session_id: &str, name: &str) {
         if let Some(schema) = self.get_schema(name).cloned() {
             let mut schemas = vec![];
             schemas.push(schema);
@@ -405,8 +436,13 @@ impl DataSourceManager {
                                 schema.channel = Some(result_channel);
                             }
 
-                            self.columns
-                                .insert(source_schema.name.to_owned(), next_columns);
+                            self.sessions.get_mut(session_id).is_some_and(|session| {
+                                session.columns.as_mut().is_some_and(|item| {
+                                    item.1 = columns;
+                                    return true;
+                                });
+                                return true;
+                            });
                         }
                     }
                 }
@@ -417,44 +453,63 @@ impl DataSourceManager {
     ///更新will数据源状态,返回之前的状态, 若存在最终状态则不更新
     pub fn update_final_status(
         &mut self,
+        session_id: &str,
         name: &str,
         status: DataSourceChannelStatus,
         overide: bool,
     ) -> Option<DataSourceChannelStatus> {
-        match self.final_status.get(name) {
-            Some(old_status) => {
-                if overide {
-                    return self.final_status.insert(name.to_owned(), status);
-                } else {
-                    match old_status {
-                        DataSourceChannelStatus::Starting => {
-                            return self.final_status.insert(name.to_owned(), status)
+        match self.sessions.get_mut(session_id) {
+            Some(session) => {
+                let old_status = session.final_status.get(name);
+                match old_status {
+                    Some(old_status) => {
+                        if overide {
+                            return session.final_status.insert(name.to_owned(), status);
+                        } else {
+                            match old_status {
+                                DataSourceChannelStatus::Starting => {
+                                    return session.final_status.insert(name.to_owned(), status)
+                                }
+                                DataSourceChannelStatus::Running => {
+                                    return session.final_status.insert(name.to_owned(), status)
+                                }
+                                DataSourceChannelStatus::Stopped(_) => return None,
+                                DataSourceChannelStatus::Terminated(_) => return None,
+                                DataSourceChannelStatus::Inited => {
+                                    return session.final_status.insert(name.to_owned(), status)
+                                }
+                                DataSourceChannelStatus::Ended => return None,
+                            }
                         }
-                        DataSourceChannelStatus::Running => {
-                            return self.final_status.insert(name.to_owned(), status)
-                        }
-                        DataSourceChannelStatus::Stopped(_) => return None,
-                        DataSourceChannelStatus::Terminated(_) => return None,
-                        DataSourceChannelStatus::Inited => {
-                            return self.final_status.insert(name.to_owned(), status)
-                        }
-                        DataSourceChannelStatus::Ended => return None,
                     }
+                    None => return session.final_status.insert(name.to_owned(), status),
                 }
             }
-            None => return self.final_status.insert(name.to_owned(), status),
+            None => None,
         }
     }
 
-    pub fn is_shutdown(&self, name: &str) -> bool {
-        match self.will_status.get(name).map(Self::is_shutdown_self) {
-            Some(shut) => return shut,
-            None => return false,
+    pub fn is_shutdown(&self, session_id: &str, name: &str) -> bool {
+        match self.sessions.get(session_id) {
+            Some(session) => match session.will_status.get(name) {
+                Some(status) => {
+                    return Self::is_shutdown_self(status);
+                }
+                None => return false,
+            },
+            None => false,
         }
     }
 
-    pub fn get_final_status(&self, name: &str) -> Option<&DataSourceChannelStatus> {
-        self.final_status.get(name)
+    pub fn get_final_status(
+        &self,
+        session_id: &str,
+        name: &str,
+    ) -> Option<&DataSourceChannelStatus> {
+        match self.sessions.get(session_id) {
+            Some(session) => return session.final_status.get(name),
+            None => None,
+        }
     }
 
     pub fn is_shutdown_self(source: &DataSourceChannelStatus) -> bool {
@@ -467,8 +522,23 @@ impl DataSourceManager {
     }
 
     pub async fn stop_all_task(&mut self) {
-        for val in self.will_status.values_mut() {
-            *val = DataSourceChannelStatus::Stopped("手动关闭任务".to_owned());
+        for session in self.sessions.values_mut() {
+            for val in session.will_status.values_mut() {
+                *val = DataSourceChannelStatus::Stopped("手动关闭任务".to_owned());
+            }
+        }
+    }
+
+    pub async fn stop_all_task_by_session(&mut self, session_id: &str) {
+        match self.sessions.get_mut(session_id) {
+            Some(session) => {
+                for val in session.will_status.values_mut() {
+                    *val = DataSourceChannelStatus::Stopped("手动关闭任务".to_owned());
+                }
+            }
+            None => {
+                // nothing
+            }
         }
     }
 
@@ -476,46 +546,60 @@ impl DataSourceManager {
     /// 等待所有任务完成
     pub async fn await_all_done(&self) {
         loop {
-            let mut count = self.final_status.iter().count();
+            let mut session_num = self.sessions.len();
+            for session in self.sessions.values() {
+                let mut count = session.final_status.iter().count();
 
-            for val in self.final_status.values() {
-                match val {
-                    DataSourceChannelStatus::Running => continue,
-                    DataSourceChannelStatus::Stopped(_) => count -= 1,
-                    DataSourceChannelStatus::Terminated(_) => count -= 1,
-                    DataSourceChannelStatus::Inited => continue,
-                    DataSourceChannelStatus::Ended => count -= 1,
-                    DataSourceChannelStatus::Starting => continue,
+                for val in session.final_status.values() {
+                    match val {
+                        DataSourceChannelStatus::Running => continue,
+                        DataSourceChannelStatus::Stopped(_) => count -= 1,
+                        DataSourceChannelStatus::Terminated(_) => count -= 1,
+                        DataSourceChannelStatus::Inited => continue,
+                        DataSourceChannelStatus::Ended => count -= 1,
+                        DataSourceChannelStatus::Starting => continue,
+                    }
                 }
-            }
 
-            if count == 0 {
+                if count == 0 {
+                    session_num -= 1;
+                    continue;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await
+            }
+            if session_num == 0 {
                 break;
             }
             tokio::time::sleep(Duration::from_secs(1)).await
         }
     }
 
-    /// 等待所有任务完成
-    pub async fn await_all_init(&self, name: &str) {
+    pub async fn await_all_done_by_session(&self, session_id: &str) {
         loop {
-            if let Some(schema) = self.get_schema(name) {
-                if let Some(sources) = schema.sources.as_ref() {
-                    let mut count = sources.len();
-                    for source in sources {
-                        if let Some(DataSourceChannelStatus::Inited) = self.get_final_status(source)
-                        {
-                            count -= 1;
+            match self.sessions.get(session_id) {
+                Some(session) => {
+                    let mut count = session.final_status.iter().count();
+
+                    for val in session.final_status.values() {
+                        match val {
+                            DataSourceChannelStatus::Running => continue,
+                            DataSourceChannelStatus::Stopped(_) => count -= 1,
+                            DataSourceChannelStatus::Terminated(_) => count -= 1,
+                            DataSourceChannelStatus::Inited => continue,
+                            DataSourceChannelStatus::Ended => count -= 1,
+                            DataSourceChannelStatus::Starting => continue,
                         }
                     }
+
                     if count == 0 {
                         break;
                     }
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                    continue;
+                    tokio::time::sleep(Duration::from_secs(1)).await
+                }
+                None => {
+                    break;
                 }
             }
-            break;
         }
     }
 }
@@ -653,8 +737,48 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
         _channel: ChannelContext,
     ) -> crate::Result<()> {
         if self.need_log() {
-            self.update_final_status(DataSourceChannelStatus::Starting, false)
-                .await;
+            {
+                self.update_final_status(DataSourceChannelStatus::Starting, false)
+                    .await;
+            }
+
+            // 更新配置
+            let schema = self.schema().await;
+
+            if let Some(schema) = schema {
+                // 获取字段定义
+                let columns = self.get_columns_define().await.unwrap_or(vec![]);
+                if schema.columns.is_some() || columns.len() > 0 {
+                    let schema_columns = DataSourceColumn::get_columns_from_value(
+                        &schema.columns.unwrap_or(json!({})),
+                    );
+                    // 合并两个数组
+                    let columns = DataSourceColumn::merge_columns(&columns, &schema_columns);
+                    if columns.len() > 0 {
+                        let mut data_manager = DATA_SOURCE_MANAGER.write().await;
+                        data_manager
+                            .sessions
+                            .get_mut(self.id())
+                            .expect("会话已失效")
+                            .columns = Some((json!({}), columns.clone()));
+
+                        match data_manager.get_schema_mut(self.id()) {
+                            Some(schema) => {
+                                // 更新columns
+                                let columns = parse_json_from_column(&columns);
+                                schema.columns = Some(columns.clone());
+                                data_manager.notify_update_sources(self.id()).await;
+                                drop(data_manager);
+                            }
+                            None => {
+                                return Err(Error::Io(IoError::ParseSchemaError));
+                            }
+                        }
+                    }
+                }
+            } else {
+                return Err(Error::Io(IoError::SchemaNotFound));
+            }
         }
 
         Ok(())
@@ -757,40 +881,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
             self.update_final_status(DataSourceChannelStatus::Running, false)
                 .await;
         }
-        // 更新配置
-        let schema = self.schema().await;
 
-        if let Some(schema) = schema {
-            // 获取字段定义
-            let columns = self.get_columns_define().await.unwrap_or(vec![]);
-            if schema.columns.is_some() || columns.len() > 0 {
-                let schema_columns =
-                    DataSourceColumn::get_columns_from_value(&schema.columns.unwrap_or(json!({})));
-                // 合并两个数组
-                let columns = DataSourceColumn::merge_columns(&columns, &schema_columns);
-                if columns.len() > 0 {
-                    let mut data_manager = DATA_SOURCE_MANAGER.write().await;
-                    data_manager
-                        .columns
-                        .insert(self.id().to_owned(), columns.clone());
-
-                    match data_manager.get_schema_mut(self.id()) {
-                        Some(schema) => {
-                            // 更新columns
-                            let columns = parse_json_from_column(&columns);
-                            schema.columns = Some(columns.clone());
-                            data_manager.notify_update_sources(self.id()).await;
-                            drop(data_manager);
-                        }
-                        None => {
-                            return Err(Error::Io(IoError::ParseSchemaError));
-                        }
-                    }
-                }
-            }
-        } else {
-            return Err(Error::Io(IoError::SchemaNotFound));
-        }
         if context.read().await.skip {
             return Ok(());
         }

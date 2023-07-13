@@ -60,6 +60,10 @@ impl Exector for FakeTaskExecutor {
             .ok_or(Error::Io(IoError::UndefinedColumns))?;
         // 解锁
         drop(data_manager);
+
+        if columns.len() == 0 {
+            return Err(Error::Io(IoError::UndefinedColumns));
+        }
         for _ in 0..self.batch().await {
             datas.push(get_fake_data(&columns));
         }

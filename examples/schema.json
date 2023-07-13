@@ -1,90 +1,15 @@
 {
     "sources": [
         {
-            "name": "mysql-output",
-            "source": "Mysql",
-            "meta": {
-                "host": "127.0.0.1",
-                "port": 3306,
-                "database": "tests",
-                "table": "BFC_TSA_PACKET_INFO",
-                "user": "root",
-                "password": "bfcdb@123"
-            },
-            "columns": {
-                "PACKET_ID": "bigint unsigned",
-                "PACKET_NAME": "varchar",
-                "DEVICE_ID": "bigint unsigned",
-                "LINK_ID": "int unsigned",
-                "CENTER_ID": "int unsigned",
-                "CUSTOMER_ID": "bigint unsigned",
-                "data_source_id": "bigint unsigned",
-                "user_id": "bigint unsigned",
-                "password": "password",
-                "username": "username",
-                "email": "email",
-                "ip": "ipv4",
-                "phone": "phone",
-                "city": "city",
-                "country": "country"
-            },
-            "channel": {
-                "batch": 2000,
-                "concurrency": 2,
-                "count": 10000
-            },
-            "sources": ["fake_datasource"]
-        },
-        {
             "name":"mysql-output2",
             "source": "Mysql",
             "meta": {
-                "host": "127.0.0.1",
-                "port": 3306,
+                "host": "192.168.180.213",
                 "database": "tests",
                 "table": "BFC_TSA_PACKET_INFO",
                 "user": "root",
                 "password": "bfcdb@123"
-            },
-            "columns": {
-                "PACKET_ID": "bigint unsigned",
-                "PACKET_NAME": "varchar",
-                "DEVICE_ID": "bigint unsigned",
-                "LINK_ID": "int unsigned",
-                "CENTER_ID": "int unsigned",
-                "CUSTOMER_ID": "bigint unsigned",
-                "data_source_id": "bigint unsigned",
-                "user_id": "int unsigned",
-                "password": "password",
-                "username": "username",
-                "email": "email",
-                "ip": "ipv4",
-                "phone": "phone",
-                "city": "city",
-                "country": "country"
-            },
-            "channel": {
-                "batch": 2000,
-                "concurrency": 2,
-                "count": 10000
-            },
-            "sources":["fake_datasource", "mysql-output"]
-        },
-        {
-            "name": "local-csv",
-            "source": "Csv",
-            "meta": {
-                "filename": "examples/test.csv"
-            },
-            "columns": {
-
-            },
-            "channel": {
-                "batch": 1000,
-                "concurrency": 2,
-                "count": 10000
-            },
-            "sources":["fake_datasource"]
+            }
         }
     ],
     "interval": 5

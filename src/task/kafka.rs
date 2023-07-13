@@ -55,7 +55,6 @@ impl KafkaTask {
         count_rc: Option<Arc<AtomicI64>>,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
     ) -> Self {
-        let name2 = name.clone();
         Self {
             id: pid.to_owned(),
             name: name.to_owned(),

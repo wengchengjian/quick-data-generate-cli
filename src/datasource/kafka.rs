@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use super::{ChannelContext, DataSourceChannel, DATA_SOURCE_MANAGER};
+use super::{ChannelContext, DataSourceChannel};
 use crate::{
     core::{
         cli::Cli,
@@ -20,6 +20,7 @@ use crate::{
     Json,
 };
 use async_trait::async_trait;
+use mysql_common::frunk::labelled::chars::E;
 use rdkafka::{
     consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer},
     producer::FutureProducer,
@@ -82,6 +83,13 @@ impl KafkaArgs {
 pub static DEFAULT_GROUP: &'static str = "vFBiQ6aasB";
 
 impl KafkaDataSource {
+    pub fn new(schema: DataSourceSchema, id: &str) -> Self {
+        Self {
+            id: id.to_owned(),
+            name: schema.name,
+        }
+    }
+
     pub async fn get_provider(&self) -> Result<FutureProducer> {
         let host = format!("{}:{}", self.host().await, self.port().await);
         return ClientConfig::new()
@@ -130,14 +138,18 @@ impl KafkaDataSource {
     }
 
     pub async fn host(&self) -> String {
-        self.meta().await.unwrap_or(json!({}))["host"]
+        self.meta("host")
+            .await
+            .unwrap_or(json!("localhost"))
             .as_str()
             .unwrap_or("localhost")
             .to_owned()
     }
 
     pub async fn port(&self) -> u64 {
-        self.meta().await.unwrap_or(json!({}))["port"]
+        self.meta("port")
+            .await
+            .unwrap_or(json!(9092))
             .as_u64()
             .unwrap_or(9092)
     }
@@ -190,24 +202,20 @@ impl TaskDetailStatic for KafkaDataSource {}
 
 #[async_trait]
 impl DataSourceChannel for KafkaDataSource {
-    async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
+    async fn get_columns_define(&mut self) -> crate::Result<Vec<DataSourceColumn>> {
         if let Some(_schema) = self.schema().await {
-            if let Some(topic) = self.meta().await.unwrap_or(json!({}))["topic"].as_str() {
+            if let Some(topic) = self.meta("topic").await.unwrap().as_str() {
                 let ref topics = vec![topic];
-                match self.get_consumer(DEFAULT_GROUP.to_string(), topics).await {
-                    Ok(consumer) => {
-                        // 获取字段定义
-                        let columns = KafkaDataSource::get_columns_define(consumer).await;
-                        return Some(columns);
-                    }
-                    Err(_) => {
-                        return None;
-                    }
-                }
+                let consumer = self.get_consumer(DEFAULT_GROUP.to_string(), topics).await?;
+                // 获取字段定义
+                let columns = KafkaDataSource::get_columns_define(consumer).await;
+                return Ok(columns);
+            } else {
+                Err(Error::Io(IoError::ArgNotFound("topic")))
             }
+        } else {
+            Err(Error::Io(IoError::SchemaNotFound))
         }
-
-        None
     }
 
     async fn get_task(

@@ -31,6 +31,9 @@ pub enum IoError {
     #[error("cannot found meta error")]
     MetaNotFound,
 
+    #[error("cannot found session error")]
+    SessionNotFound,
+
     #[error("parse json error: {}", _0)]
     ParseJsonError(#[source] serde_json::Error),
 

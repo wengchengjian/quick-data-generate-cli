@@ -1,4 +1,4 @@
-use crate::{datasource::DATA_SOURCE_MANAGER, model::schema::DataSourceSchema};
+use crate::{datasource::DATA_SOURCE_MANAGER};
 
 use super::init_pool;
 

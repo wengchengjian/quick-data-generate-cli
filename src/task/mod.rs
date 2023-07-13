@@ -23,16 +23,9 @@ pub trait Task: Send + Sync + Name + TaskDetailStatic {
     async fn run(&mut self) -> crate::Result<()> {
         while !self.shutdown().is_shutdown {
             let mut exector = self.executor();
-            match exector.execute().await {
-                Err(e) => {
-                    println!("{:?}", e);
-                    break;
-                }
-                Ok(completed) => {
-                    if completed {
-                        break;
-                    }
-                }
+            let completed = exector.execute().await?;
+            if completed {
+                break;
             }
             self.shutdown().try_recv();
         }

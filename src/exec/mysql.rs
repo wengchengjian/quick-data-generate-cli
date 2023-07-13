@@ -10,13 +10,10 @@ use tokio::sync::{
     Mutex,
 };
 
-use crate::{
-    core::{
-        error::{Error, IoError},
-        limit::token::TokenBuketLimiter,
-        traits::{Name, TaskDetailStatic},
-    },
-    datasource::DATA_SOURCE_MANAGER,
+use crate::core::{
+    error::{Error, IoError},
+    limit::token::TokenBuketLimiter,
+    traits::{Name, TaskDetailStatic},
 };
 
 use super::Exector;
@@ -67,18 +64,16 @@ impl MysqlTaskExecutor {
     }
 
     pub async fn database(&self) -> crate::Result<String> {
-        self.meta()
-            .await
-            .ok_or(Error::Io(IoError::ArgNotFound("meta")))?["database"]
+        self.meta("database")
+            .await?
             .as_str()
             .map(|database| database.to_owned())
             .ok_or(Error::Io(IoError::ArgNotFound("database")))
     }
 
     pub async fn table(&self) -> crate::Result<String> {
-        self.meta()
-            .await
-            .ok_or(Error::Io(IoError::ArgNotFound("meta")))?["table"]
+        self.meta("table")
+            .await?
             .as_str()
             .map(|table| table.to_owned())
             .ok_or(Error::Io(IoError::ArgNotFound("table")))
@@ -87,19 +82,17 @@ impl MysqlTaskExecutor {
     pub async fn get_columns_name(&self) -> crate::Result<(String, String)> {
         let mut columns_name = String::new();
         let mut columns_name_val = String::new();
-        if let Some(columns) = self.columns().await {
-            for column in columns {
-                columns_name.push_str(&column.name());
-                columns_name.push_str(",");
+        let columns = self.columns().await?;
+        for column in columns {
+            columns_name.push_str(&column.name());
+            columns_name.push_str(",");
 
-                columns_name_val.push_str(format!(":{}", column.name()).as_str());
-                columns_name_val.push_str(",");
-            }
-            columns_name.pop();
-            columns_name_val.pop();
-            return Ok((columns_name, columns_name_val));
+            columns_name_val.push_str(format!(":{}", column.name()).as_str());
+            columns_name_val.push_str(",");
         }
-        Err(Error::Io(IoError::ArgNotFound("columns")))
+        columns_name.pop();
+        columns_name_val.pop();
+        return Ok((columns_name, columns_name_val));
     }
 
     fn replace_val(&self, header: String, key: &str, val: &serde_json::Value) -> String {
@@ -162,6 +155,7 @@ impl Exector for MysqlTaskExecutor {
     async fn handle_batch(&mut self, vals: Vec<serde_json::Value>) -> crate::Result<()> {
         let (column_names, column_name_vals) = self.get_columns_name().await?;
 
+        let mut is_replace = false;
         let mut insert_header = format!(
             "INSERT DELAYED  INTO {}.{} ({}) VALUES ",
             self.database().await?,
@@ -180,22 +174,27 @@ impl Exector for MysqlTaskExecutor {
             }
             insert_header.push_str(&name_vals);
             insert_header.push(',');
+            is_replace = true;
         }
-        //        watch.stop();
-        insert_header.pop();
-        match self.pool.get_conn().await {
-            Ok(mut conn) => {
-                //                watch.start("执行sql");
-                if let Err(err) = insert_header.run(&mut conn).await {
-                    println!("insert error: {:?}", err);
+        if is_replace {
+            //        watch.stop();
+            insert_header.pop();
+            match self.pool.get_conn().await {
+                Ok(mut conn) => {
+                    //                watch.start("执行sql");
+                    if let Err(err) = insert_header.run(&mut conn).await {
+                        println!("insert error: {:?}", err);
+                    }
+                    //                watch.stop();
+                    //                watch.print_all_task_mils();
+                    return Ok(());
                 }
-                //                watch.stop();
-                //                watch.print_all_task_mils();
-                return Ok(());
-            }
-            Err(e) => {
-                return Err(Error::Other(Box::new(e)));
-            }
-        };
+                Err(e) => {
+                    return Err(Error::Other(Box::new(e)));
+                }
+            };
+        }
+
+        Ok(())
     }
 }

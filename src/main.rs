@@ -57,8 +57,7 @@ pub fn create_context(limit: Option<usize>, skip: bool) -> DataSourceContext {
 pub async fn create_delegate_output(cli: Cli) -> Result<(DelegatedDataSource, DataSourceContext)> {
     let cli_args = cli.clone();
     // 获取所有数据源
-    let (datasources, interval, context) =
-        parse_datasource(cli_args).await.expect("解析数据源失败");
+    let (datasources, interval, context) = parse_datasource(cli_args).await?;
 
     if datasources.len() == 0 {
         return Err(Error::Io(IoError::ParseSchemaError));
@@ -118,22 +117,34 @@ pub async fn execute(cli: Cli) -> Result<()> {
 async fn await_all_done() {
     loop {
         let data_manager = DATA_SOURCE_MANAGER.read().await;
-        let mut count = data_manager.final_status.iter().count();
 
-        for val in data_manager.final_status.values() {
-            match val {
-                DataSourceChannelStatus::Running => continue,
-                DataSourceChannelStatus::Stopped(_) => count -= 1,
-                DataSourceChannelStatus::Terminated(_) => count -= 1,
-                DataSourceChannelStatus::Inited => continue,
-                DataSourceChannelStatus::Ended => count -= 1,
-                DataSourceChannelStatus::Starting => continue,
-            }
-        }
-        // 解锁
+        let mut session_num = data_manager.sessions.len();
+        // 克隆迭代器中的session
+        let sessions = data_manager.sessions.values().cloned().collect::<Vec<_>>();
+
         drop(data_manager);
 
-        if count == 0 {
+        for session in sessions {
+            let mut count = session.final_status.iter().count();
+
+            for val in session.final_status.values() {
+                match val {
+                    DataSourceChannelStatus::Running => continue,
+                    DataSourceChannelStatus::Stopped(_) => count -= 1,
+                    DataSourceChannelStatus::Terminated(_) => count -= 1,
+                    DataSourceChannelStatus::Inited => continue,
+                    DataSourceChannelStatus::Ended => count -= 1,
+                    DataSourceChannelStatus::Starting => continue,
+                }
+            }
+
+            if count == 0 {
+                session_num -= 1;
+                continue;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await
+        }
+        if session_num == 0 {
             break;
         }
         tokio::time::sleep(Duration::from_secs(1)).await

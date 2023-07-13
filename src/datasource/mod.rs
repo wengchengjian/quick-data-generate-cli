@@ -1,4 +1,3 @@
-use async_recursion::async_recursion;
 use async_trait::async_trait;
 use core::fmt;
 use sqlx::{Pool, Sqlite};
@@ -28,13 +27,13 @@ use crate::{
         fake::get_random_uuid,
         limit::token::TokenBuketLimiter,
         log::register,
-        parse::merge_json,
+        parse::merge_columns_to_session,
         shutdown::Shutdown,
         traits::{Name, TaskDetailStatic},
     },
     model::{
         column::{parse_json_from_column, DataSourceColumn},
-        schema::{ChannelSchema, DataSourceSchema},
+        schema::DataSourceSchema,
     },
     task::Task,
     Json,
@@ -191,6 +190,7 @@ pub struct DataSourceStatistics {
 /// 用于在一个传输会话中共享的数据结构
 /// 目前共享的有meta, columns
 /// sessionId 检索session, 同一个namespace下的channel sessionId相同
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DataSourceTransferSession {
     pub id: String,
 
@@ -320,10 +320,16 @@ impl DataSourceManager {
         };
     }
 
+    pub fn columns_json(&self, session_id: &str) -> Option<&Json> {
+        self.sessions
+            .get(session_id)
+            .map(|session| session.columns.as_ref().map(|columns| &columns.0).unwrap())
+    }
+
     pub fn columns(&self, session_id: &str) -> Option<&Vec<DataSourceColumn>> {
         self.sessions
             .get(session_id)
-            .map(|session| session.columns.map(|columns| &columns.1).unwrap())
+            .map(|session| session.columns.as_ref().map(|columns| &columns.1).unwrap())
     }
 
     pub fn put_schema(&mut self, name: &str, schema: DataSourceSchema) -> Option<DataSourceSchema> {
@@ -349,105 +355,10 @@ impl DataSourceManager {
         name: &str,
         status: DataSourceChannelStatus,
     ) {
-        self.sessions.get_mut(session_id).is_some_and(|session| {
+        let _ = self.sessions.get_mut(session_id).is_some_and(|session| {
             session.will_status.insert(name.to_owned(), status);
             return true;
         });
-    }
-
-    pub async fn update_datasource_columns(
-        &mut self,
-        session_id: &str,
-        name: &str,
-        columns: Vec<DataSourceColumn>,
-    ) {
-        self.sessions.get_mut(session_id).is_some_and(|session| {
-            session.columns.as_mut().is_some_and(|item| {
-                item.1 = columns;
-                return true;
-            });
-            return true;
-        });
-    }
-
-    /// TODO: 直接定义可变递归函数，编译器会报错，不支持多个可变借用, 需要优化成bfs
-    #[async_recursion]
-    pub async fn notify_update_sources(&mut self, session_id: &str, name: &str) {
-        if let Some(schema) = self.get_schema(name).cloned() {
-            let mut schemas = vec![];
-            schemas.push(schema);
-
-            while let Some(schema) = schemas.pop() {
-                if let Some(sources) = schema.sources.as_ref() {
-                    let columns = DataSourceColumn::get_columns_from_value(
-                        &schema.columns.unwrap_or(json!(0)),
-                    );
-                    let meta = &schema.meta.unwrap_or(json!({}));
-                    let channel = &schema.channel.unwrap_or(ChannelSchema::default());
-
-                    for source in sources {
-                        let columns = columns.clone();
-                        if let Some(mut source_schema) = self.get_schema(source).cloned() {
-                            schemas.push(source_schema.clone());
-                            let mut next_columns = Vec::new();
-                            if let Some(schema_columns) = &source_schema.columns {
-                                let schema_columns =
-                                    DataSourceColumn::get_columns_from_value(schema_columns);
-                                // 合并两个数组
-                                next_columns =
-                                    DataSourceColumn::merge_columns(&columns, &schema_columns);
-                            } else {
-                                next_columns = columns.clone();
-                            }
-                            let mut next_meta = json!({});
-
-                            if let Some(schema_meta) = &mut source_schema.meta {
-                                merge_json(meta, schema_meta);
-                                next_meta = schema_meta.clone();
-                            } else {
-                                next_meta = meta.clone()
-                            }
-                            let mut result_channel = ChannelSchema::default();
-
-                            let source_channel = source_schema.channel;
-                            if let Some(source_channel) = source_channel {
-                                if source_channel.batch.is_none() {
-                                    result_channel.batch = channel.batch.clone();
-                                } else {
-                                    result_channel.batch = source_channel.batch.clone();
-                                }
-                                if source_channel.count.is_none() {
-                                    result_channel.count = channel.count.clone();
-                                } else {
-                                    result_channel.count = source_channel.count.clone();
-                                }
-                                if source_channel.concurrency.is_none() {
-                                    result_channel.concurrency = channel.concurrency.clone();
-                                } else {
-                                    result_channel.concurrency = source_channel.concurrency.clone();
-                                }
-                            } else {
-                                result_channel = channel.clone();
-                            }
-                            if let Some(schema) = self.get_schema_mut(&source_schema.name) {
-                                // 更新columns
-                                schema.columns = Some(parse_json_from_column(&next_columns));
-                                schema.meta = Some(next_meta);
-                                schema.channel = Some(result_channel);
-                            }
-
-                            self.sessions.get_mut(session_id).is_some_and(|session| {
-                                session.columns.as_mut().is_some_and(|item| {
-                                    item.1 = columns;
-                                    return true;
-                                });
-                                return true;
-                            });
-                        }
-                    }
-                }
-            }
-        }
     }
 
     ///更新will数据源状态,返回之前的状态, 若存在最终状态则不更新
@@ -604,6 +515,7 @@ impl DataSourceManager {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DataSourceChannelStatus {
     Starting,
     Running,
@@ -762,18 +674,19 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
                             .expect("会话已失效")
                             .columns = Some((json!({}), columns.clone()));
 
-                        match data_manager.get_schema_mut(self.id()) {
+                        match data_manager.get_schema_mut(self.name()) {
                             Some(schema) => {
                                 // 更新columns
                                 let columns = parse_json_from_column(&columns);
                                 schema.columns = Some(columns.clone());
-                                data_manager.notify_update_sources(self.id()).await;
-                                drop(data_manager);
                             }
                             None => {
                                 return Err(Error::Io(IoError::ParseSchemaError));
                             }
                         }
+
+                        drop(data_manager);
+                        merge_columns_to_session(self.id(), &columns).await?;
                     }
                 }
             } else {
@@ -853,8 +766,8 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
         self.execute(context, channel_context).await
     }
 
-    async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
-        return None;
+    async fn get_columns_define(&mut self) -> crate::Result<Vec<DataSourceColumn>> {
+        return Ok(vec![]);
     }
 
     async fn get_task(

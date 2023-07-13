@@ -59,7 +59,6 @@ impl MysqlTask {
         count_rc: Option<Arc<AtomicI64>>,
         channel: ChannelContext,
     ) -> Self {
-        let name2 = name.clone();
         Self {
             id: pid.to_owned(),
             name: name.to_owned(),

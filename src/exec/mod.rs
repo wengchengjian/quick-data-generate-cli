@@ -86,7 +86,7 @@ pub trait Exector: Send + Sync + TaskDetailStatic + Name {
                     None => Ok(true),
                 }
             }
-            Err(e) => {
+            Err(_) => {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(false)
             }
@@ -119,18 +119,20 @@ pub trait Exector: Send + Sync + TaskDetailStatic + Name {
                     let data = receiver.lock().await.recv().await;
 
                     if let Some(mut data) = data {
-                        if !self.is_multi_handle() {
-                            self.handle_single(&mut data).await?;
-                            num += 1;
-                            if let Some(count) = self.count_rc() {
-                                count.fetch_sub(1, Ordering::SeqCst);
+                        if data.is_object() && data.as_object().unwrap().len() != 0 {
+                            if !self.is_multi_handle() {
+                                self.handle_single(&mut data).await?;
+                                num += 1;
+                                if let Some(count) = self.count_rc() {
+                                    count.fetch_sub(1, Ordering::SeqCst);
+                                }
+                                if num % 100 == 0 {
+                                    incr_log(&self.id(), num, 1).await;
+                                    num = 0;
+                                }
+                            } else {
+                                arr.push(data);
                             }
-                            if num % 100 == 0 {
-                                incr_log(&self.id(), num, 1).await;
-                                num = 0;
-                            }
-                        } else {
-                            arr.push(data);
                         }
                     }
                 }

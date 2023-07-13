@@ -54,9 +54,8 @@ impl CsvTaskExecutor {
     }
 
     pub async fn filename(&self) -> crate::Result<String> {
-        self.meta()
-            .await
-            .ok_or(Error::Io(IoError::ArgNotFound("meta")))?["filename"]
+        self.meta("filename")
+            .await?
             .as_str()
             .map(|filename| filename.to_owned())
             .ok_or(Error::Io(IoError::ArgNotFound("filename")))

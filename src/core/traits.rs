@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use crate::{
-    datasource::{DataSourceChannelStatus, DATA_SOURCE_MANAGER},
+    datasource::{DataSourceChannelStatus, DataSourceTransferSession, DATA_SOURCE_MANAGER},
     model::{column::DataSourceColumn, schema::DataSourceSchema},
     Json,
 };
@@ -84,18 +84,62 @@ pub trait TaskDetailStatic: Name {
         0
     }
 
-    async fn meta(&self) -> crate::Result<&Json> {
+    async fn session(&self) -> Option<DataSourceTransferSession> {
+        DATA_SOURCE_MANAGER
+            .read()
+            .await
+            .sessions
+            .get(self.id())
+            .cloned()
+    }
+
+    async fn meta_all(&self) -> crate::Result<Json> {
         if let Some(schema) = self.schema().await {
-            return Ok(schema.meta.as_ref().unwrap());
+            if let Some(meta) = schema.meta.as_ref() {
+                return Ok(meta.clone());
+            }
         }
         Err(Error::Io(IoError::MetaNotFound))
     }
 
-    async fn columns(&self) -> crate::Result<&Vec<DataSourceColumn>> {
+    async fn meta(&self, name: &'static str) -> crate::Result<Json> {
+        if let Some(schema) = self.schema().await {
+            let meta = schema.meta.as_ref().unwrap().get(name);
+            match meta {
+                Some(meta) => {
+                    return Ok(meta.clone());
+                }
+                None => {
+                    let session = self
+                        .session()
+                        .await
+                        .ok_or(Error::Io(IoError::SessionNotFound))?;
+                    if let Some(meta) = session.meta {
+                        if let Some(meta) = meta.get(name) {
+                            return Ok(meta.clone());
+                        }
+                    }
+                }
+            }
+        }
+        Err(Error::Io(IoError::ArgNotFound(name)))
+    }
+
+    async fn columns_json(&self) -> crate::Result<Json> {
+        DATA_SOURCE_MANAGER
+            .read()
+            .await
+            .columns_json(self.id())
+            .cloned()
+            .ok_or(Error::Io(IoError::UndefinedColumns))
+    }
+
+    async fn columns(&self) -> crate::Result<Vec<DataSourceColumn>> {
         DATA_SOURCE_MANAGER
             .read()
             .await
             .columns(self.id())
+            .cloned()
             .ok_or(Error::Io(IoError::UndefinedColumns))
     }
 }

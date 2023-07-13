@@ -1,5 +1,3 @@
-use std::time::SystemTime;
-
 use crate::{core::parse::DEFAULT_FAKE_DATASOURCE, datasource::DataSourceEnum, Json};
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +16,7 @@ impl Schema {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DataSourceSchema {
-    pub id: u32,
+    pub id: Option<u32>,
 
     pub name: String,
 
@@ -32,11 +30,11 @@ pub struct DataSourceSchema {
 
     pub sources: Option<Vec<String>>,
 
-    pub create_time: time::OffsetDateTime,
+    pub create_time: Option<time::OffsetDateTime>,
 
-    pub update_time: time::OffsetDateTime,
+    pub update_time: Option<time::OffsetDateTime>,
 
-    pub deleted: u8,
+    pub deleted: Option<u8>,
 }
 
 impl DataSourceSchema {
@@ -52,16 +50,16 @@ impl DataSourceSchema {
         update_time: time::OffsetDateTime,
     ) -> Self {
         Self {
-            id,
+            id: Some(id),
             name,
             source,
             meta,
             columns,
             channel,
             sources,
-            create_time,
-            update_time,
-            deleted: 0,
+            create_time: Some(create_time),
+            update_time: Some(create_time),
+            deleted: Some(0),
         }
     }
 
@@ -80,16 +78,16 @@ impl DataSourceSchema {
     }
     pub fn fake() -> Self {
         Self {
-            id: 0,
+            id: Some(0),
             name: DEFAULT_FAKE_DATASOURCE.to_owned(),
             source: DataSourceEnum::Fake,
             meta: None,
             columns: None,
             channel: Some(ChannelSchema::default()),
             sources: None,
-            create_time: time::OffsetDateTime::now_utc(),
-            update_time: time::OffsetDateTime::now_utc(),
-            deleted: 0,
+            create_time: Some(time::OffsetDateTime::now_utc()),
+            update_time: Some(time::OffsetDateTime::now_utc()),
+            deleted: Some(0),
         }
     }
 }

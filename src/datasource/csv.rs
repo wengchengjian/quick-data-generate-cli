@@ -16,9 +16,9 @@ use serde_json::json;
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use std::sync::atomic::{AtomicBool, AtomicI64};
+use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
-use std::vec;
+
 use tokio::fs::File;
 
 use tokio::io::AsyncWriteExt;
@@ -26,28 +26,33 @@ use tokio::io::BufWriter;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
 impl CsvDataSource {
+    pub fn new(schema: DataSourceSchema, session_id: &str) -> CsvDataSource {
+        let _batch = schema.channel.as_ref().unwrap().batch.unwrap_or(1000);
+        let _concurrency = schema.channel.unwrap().concurrency.unwrap_or(1);
+        CsvDataSource {
+            id: session_id.to_owned(),
+            name: schema.name,
+        }
+    }
+
     #[deprecated(since = "0.1.0", note = "Please use the parse schema function instead")]
-    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
+    pub(crate) fn from_cli(_cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = CsvDataSource {
             id: Uuid::new_v4().to_string(),
             name: "Csv".into(),
-            args: cli.try_into()?,
-            shutdown: AtomicBool::new(false),
-            columns: vec![],
-            sources: vec!["fake_data_source".to_owned()],
         };
 
         Ok(Box::new(res))
     }
 
-    pub fn get_columns_names(&self) -> String {
+    pub async fn get_columns_names(&self) -> Result<String> {
         let mut columns_name = String::new();
-        for column in &self.columns {
+        for column in &self.columns().await? {
             columns_name.push_str(&column.name());
             columns_name.push_str(",");
         }
         columns_name.pop();
-        columns_name
+        Ok(columns_name)
     }
 }
 
@@ -100,10 +105,6 @@ impl TryFrom<DataSourceSchema> for CsvDataSource {
         Ok(CsvDataSource {
             id: Uuid::new_v4().to_string(),
             name: value.name,
-            args: CsvArgs::from_value(value.meta, value.channel)?,
-            shutdown: AtomicBool::new(false),
-            columns: DataSourceColumn::get_columns_from_schema(&value.columns.unwrap_or(json!(0))),
-            sources: value.sources.unwrap_or(vec![]),
         })
     }
 }
@@ -132,7 +133,7 @@ impl super::DataSourceChannel for CsvDataSource {
         //注册日志
         register(&self.id().clone()).await;
         // 创建csv文件
-        let path = PathBuf::from(&self.args.filename);
+        let path = PathBuf::from(&self.meta("filename").await?.as_str().unwrap());
 
         match path.parent() {
             Some(parent) => {
@@ -143,7 +144,7 @@ impl super::DataSourceChannel for CsvDataSource {
 
                 let file = File::create(path).await?;
                 let mut writer = BufWriter::new(file);
-                let header = self.get_columns_names();
+                let header = self.get_columns_names().await?;
                 let mut buffer = Cursor::new(header.as_str());
                 while buffer.has_remaining() {
                     writer.write_buf(&mut buffer).await?;
@@ -154,10 +155,6 @@ impl super::DataSourceChannel for CsvDataSource {
             None => {}
         }
         Ok(())
-    }
-
-    async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
-        return None;
     }
 
     async fn get_task(
@@ -198,27 +195,15 @@ pub struct CsvDataSource {
     pub id: String,
 
     pub name: String,
-
-    pub args: CsvArgs,
-
-    pub columns: Vec<DataSourceColumn>,
-
-    pub shutdown: AtomicBool,
-
-    pub sources: Vec<String>,
 }
 
 impl TryFrom<Cli> for Box<CsvDataSource> {
     type Error = Box<dyn std::error::Error>;
 
-    fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
+    fn try_from(_value: Cli) -> std::result::Result<Self, Self::Error> {
         let res = CsvDataSource {
             id: Uuid::new_v4().to_string(),
             name: "Csv".into(),
-            args: value.try_into()?,
-            shutdown: AtomicBool::new(false),
-            columns: vec![],
-            sources: vec![],
         };
 
         Ok(Box::new(res))

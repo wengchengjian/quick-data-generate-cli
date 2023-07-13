@@ -5,21 +5,21 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::core::limit::token::TokenBuketLimiter;
-use crate::core::parse::DEFAULT_FAKE_DATASOURCE;
+
 use crate::core::shutdown::Shutdown;
 use crate::core::traits::{Name, TaskDetailStatic};
 use crate::model::column::DataSourceColumn;
 use crate::model::schema::DataSourceSchema;
 use crate::task::fake::FakeTask;
 use crate::task::Task;
-use uuid::Uuid;
+
 impl FakeDataSource {
-    pub fn new(schema: DataSourceSchema) -> FakeDataSource {
+    pub fn new(schema: DataSourceSchema, session_id: &str) -> FakeDataSource {
         let batch = schema.channel.as_ref().unwrap().batch.unwrap_or(1000);
         let concurrency = schema.channel.unwrap().concurrency.unwrap_or(1);
         FakeDataSource {
-            id: Uuid::new_v4().to_string(),
-            name: DEFAULT_FAKE_DATASOURCE.to_owned(),
+            id: session_id.to_owned(),
+            name: schema.name,
             shutdown: AtomicBool::new(false),
             columns: DataSourceColumn::get_columns_from_schema(&schema.columns.unwrap_or(json!(0))),
             args: FakeArgs::new(batch, concurrency),

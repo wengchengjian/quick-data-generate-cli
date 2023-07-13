@@ -65,7 +65,7 @@ impl DataSourceColumn {
                 .into_iter()
                 .map(|(key, value)| DataSourceColumn {
                     name: key.clone(),
-                    data_type: DataTypeEnum::from_str(value.as_str().unwrap_or("unkown")).unwrap(),
+                    data_type: DataTypeEnum::from_str(value.as_str().unwrap_or("unknown")).unwrap(),
                 })
                 .collect();
         } else {

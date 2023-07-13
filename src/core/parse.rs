@@ -1,4 +1,5 @@
 use serde_json::json;
+use uuid::Uuid;
 
 use super::{
     check::DEFAULT_INTERVAL,
@@ -10,13 +11,13 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::{
     create_context,
     datasource::{
-        csv::CsvDataSource, fake::FakeDataSource, kafka::KafkaDataSource, mysql::MysqlDataSource,
-        DataSourceChannel, DataSourceContext, DataSourceEnum, MpscDataSourceChannel,
-        DATA_SOURCE_MANAGER,
+        self, csv::CsvDataSource, fake::FakeDataSource, kafka::KafkaDataSource,
+        mysql::MysqlDataSource, DataSourceChannel, DataSourceContext, DataSourceEnum,
+        DataSourceTransferSession, MpscDataSourceChannel, DATA_SOURCE_MANAGER,
     },
     impl_func_is_primitive_by_parse,
     model::{
-        column::{DataTypeEnum, FixedValue},
+        column::{parse_json_from_column, DataSourceColumn, DataTypeEnum, FixedValue},
         schema::{ChannelSchema, DataSourceSchema, Schema},
     },
     Json,
@@ -31,10 +32,97 @@ pub fn parse_schema(path: &PathBuf) -> Result<Schema> {
     Ok(schema)
 }
 
+pub fn create_seession_id() -> String {
+    return Uuid::new_v4().to_string();
+}
+
+pub async fn merge_meta_to_session(session_id: &str, meta: &Json) -> Result<()> {
+    let mut data_manager = DATA_SOURCE_MANAGER.write().await;
+
+    if data_manager.sessions.contains_key(session_id) {
+        let session = data_manager.sessions.get_mut(session_id).unwrap();
+
+        if let Some(meta_s) = session.meta.as_mut() {
+            merge_json(meta, meta_s);
+        }
+    }
+
+    drop(data_manager);
+
+    Ok(())
+}
+
+pub async fn merge_columns_to_session(
+    session_id: &str,
+    columns: &Vec<DataSourceColumn>,
+) -> Result<()> {
+    let mut data_manager = DATA_SOURCE_MANAGER.write().await;
+
+    if data_manager.sessions.contains_key(session_id) {
+        let session = data_manager.sessions.get_mut(session_id).unwrap();
+
+        if let Some((columns_json_s, columns_s)) = session.columns.as_mut() {
+            *columns_s = DataSourceColumn::merge_columns(columns, columns_s);
+            *columns_json_s = parse_json_from_column(columns_s);
+        }
+    }
+
+    drop(data_manager);
+
+    Ok(())
+}
+
+/// 合并datasource到当前会话中去
+pub async fn merge_schema_to_session(session_id: &str, schema: &DataSourceSchema) -> Result<()> {
+    let columns_json = schema.columns();
+    let meta = schema.meta();
+
+    let mut data_manager = DATA_SOURCE_MANAGER.write().await;
+
+    if data_manager.sessions.contains_key(session_id) {
+        let session = data_manager.sessions.get_mut(session_id).unwrap();
+
+        if let Some(meta) = meta {
+            if let Some(meta_s) = session.meta.as_mut() {
+                merge_json(meta, meta_s);
+            }
+        }
+
+        if let Some(columns_json) = columns_json {
+            if let Some((columns_json_s, columns_s)) = session.columns.as_mut() {
+                merge_json(columns_json, columns_json_s);
+
+                *columns_s = DataSourceColumn::merge_columns(
+                    &DataSourceColumn::get_columns_from_value(columns_json),
+                    columns_s,
+                )
+            }
+        }
+    } else {
+        let mut session = DataSourceTransferSession::new(session_id.to_owned(), None, None);
+        if let Some(meta) = meta {
+            session.meta = Some(meta.clone());
+        }
+        if let Some(columns) = columns_json {
+            session.columns = Some((
+                columns.clone(),
+                DataSourceColumn::get_columns_from_value(columns),
+            ));
+        }
+        data_manager.sessions.insert(session_id.to_owned(), session);
+    }
+
+    drop(data_manager);
+
+    Ok(())
+}
+
 pub async fn parse_mpsc_from_schema(
     schema: &DataSourceSchema,
     source_map: HashMap<&str, DataSourceSchema>,
 ) -> Result<Box<dyn DataSourceChannel>> {
+    let session_id = create_seession_id();
+
     let mut source_map = source_map;
 
     source_map
@@ -57,7 +145,8 @@ pub async fn parse_mpsc_from_schema(
             Some(source_schema) => {
                 if source_schema.name.ne(&schema.name) {
                     let schema = (*source_schema).to_owned();
-                    let datasource = parse_datasource_from_schema(schema).await?;
+                    let datasource = parse_datasource_from_schema(schema, &session_id).await?;
+                    merge_schema_to_session(&session_id, source_schema).await?;
                     producer.push(datasource);
                 }
             }
@@ -67,7 +156,9 @@ pub async fn parse_mpsc_from_schema(
         }
     }
 
-    let consumer: Box<dyn DataSourceChannel> = parse_datasource_from_schema(schema.clone()).await?;
+    let consumer: Box<dyn DataSourceChannel> =
+        parse_datasource_from_schema(schema.clone(), &session_id).await?;
+    merge_schema_to_session(&session_id, &schema).await?;
 
     let data_source_channel = MpscDataSourceChannel::new(producer, consumer);
 
@@ -76,6 +167,7 @@ pub async fn parse_mpsc_from_schema(
 
 pub async fn parse_datasource_from_schema(
     schema: DataSourceSchema,
+    session_id: &str,
 ) -> Result<Box<dyn DataSourceChannel>> {
     let mut schema = schema;
     if let None = schema.channel {
@@ -93,10 +185,10 @@ pub async fn parse_datasource_from_schema(
             .put_schema(&schema.name, schema.clone());
     }
     match schema.source {
-        DataSourceEnum::Mysql => Ok(Box::new(MysqlDataSource::try_from(schema)?)),
-        DataSourceEnum::Kafka => Ok(Box::new(KafkaDataSource::try_from(schema)?)),
-        DataSourceEnum::Csv => Ok(Box::new(CsvDataSource::try_from(schema)?)),
-        DataSourceEnum::Fake => Ok(Box::new(FakeDataSource::new(schema))),
+        DataSourceEnum::Mysql => Ok(Box::new(MysqlDataSource::new(schema, session_id))),
+        DataSourceEnum::Kafka => Ok(Box::new(KafkaDataSource::new(schema, session_id))),
+        DataSourceEnum::Csv => Ok(Box::new(CsvDataSource::new(schema, session_id))),
+        DataSourceEnum::Fake => Ok(Box::new(FakeDataSource::new(schema, session_id))),
         //        _ => {
         //            return Err(Error::Io(IoError::UnkownSourceError("source".to_owned())));
         //        }
@@ -177,10 +269,23 @@ pub async fn parse_datasources_from_schema(
     Ok(outputs)
 }
 
-pub async fn parse_datasource_from_cli(cli: Cli) -> Result<Vec<Box<dyn DataSourceChannel>>> {
-    let schema = parse_schema_from_cli(cli)?;
-
-    return Ok(parse_datasources_from_schema(schema).await?);
+pub async fn parse_datasource_from_cli(
+    cli: Cli,
+    force: bool,
+) -> Result<Option<Vec<Box<dyn DataSourceChannel>>>> {
+    match parse_schema_from_cli(cli) {
+        Ok(schema) => {
+            let channel = parse_datasources_from_schema(schema).await?;
+            return Ok(Some(channel));
+        }
+        Err(e) => {
+            if force {
+                return Err(e);
+            } else {
+                return Ok(None);
+            }
+        }
+    }
 }
 
 pub fn parse_schema_from_cli(cli: Cli) -> Result<Schema> {
@@ -228,20 +333,17 @@ pub async fn parse_datasource(
     let mut datasources = vec![];
     let interval = cli.interval;
 
-    let _ = cli.source.insert(DataSourceEnum::Mysql);
+    // let _ = cli.source.insert(DataSourceEnum::Mysql);
     // let _ = cli.topic.insert("FileHttpLogPushService".to_string());
-    cli.host = "192.168.180.217".to_owned();
-    let _ = cli.user.insert("root".to_string());
-    let _ = cli.database.insert("tests".to_string());
-    let _ = cli.table.insert("bfc_model_task".to_string());
-    let _ = cli.password.insert("bfcdb@123".to_string());
-    let _ = cli.batch.insert(1000);
-    let _ = cli.count.insert(50000);
-    let _ = cli.concurrency.insert(1);
+    // cli.host = "192.168.180.217".to_owned();
+    // let _ = cli.user.insert("root".to_string());
+    // let _ = cli.database.insert("tests".to_string());
+    // let _ = cli.table.insert("bfc_model_task".to_string());
+    // let _ = cli.password.insert("bfcdb@123".to_string());
+    // let _ = cli.batch.insert(1000);
+    // let _ = cli.concurrency.insert(1);
     // let _ = cli.interval.insert(1);
-    //    let _ = cli.schema.insert(PathBuf::from(
-    //        "C:\\Users\\Administrator\\23383409-6532-437b-af7e-ee9cd4b87127.json",
-    //    ));
+    let _ = cli.schema.insert(PathBuf::from("examples/schema.json"));
 
     if let Some(schema_path) = &cli.schema {
         let schema = parse_schema(schema_path).unwrap();
@@ -259,8 +361,13 @@ pub async fn parse_datasource(
     let limit = cli.limit;
     let skip = cli.skip;
 
-    let datasource = parse_datasource_from_cli(cli).await?;
-    datasources.extend(datasource);
+    let is_force_parse_from_cli = datasources.len() == 0;
+
+    let datasource = parse_datasource_from_cli(cli, is_force_parse_from_cli).await?;
+
+    if let Some(datasource) = datasource {
+        datasources.extend(datasource);
+    }
 
     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
 

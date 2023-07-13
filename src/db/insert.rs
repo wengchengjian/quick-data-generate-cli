@@ -4,10 +4,9 @@ use crate::{
     core::fake::FORMAT_DATE_TIME,
     datasource::DATA_SOURCE_MANAGER,
     model::schema::{ChannelSchema, DataSourceSchema},
-    Json,
 };
 
-use super::{get_conn, init_pool};
+use super::init_pool;
 
 pub async fn insert_schema_batch(schemas: &Vec<DataSourceSchema>) -> crate::Result<()> {
     for schema in schemas {
@@ -28,8 +27,8 @@ pub async fn insert_schema(schema: &DataSourceSchema) -> crate::Result<()> {
     .bind(serde_json::to_string(schema.columns().unwrap_or(&json!({})))?)
     .bind(serde_json::to_string(schema.channel().unwrap_or(&ChannelSchema::default()))?)
     .bind(serde_json::to_string(schema.sources().unwrap_or(&vec![]))?)
-    .bind(schema.create_time.format(&FORMAT_DATE_TIME).unwrap())
-    .bind(schema.update_time.format(&FORMAT_DATE_TIME).unwrap())
+    .bind(schema.create_time.unwrap_or(time::OffsetDateTime::now_utc()).format(&FORMAT_DATE_TIME).unwrap())
+    .bind(schema.update_time.unwrap_or(time::OffsetDateTime::now_utc()).format(&FORMAT_DATE_TIME).unwrap())
     .bind(0)
     .execute(pool).await?;
     drop(data_manager);

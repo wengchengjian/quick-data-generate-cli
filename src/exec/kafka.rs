@@ -37,9 +37,8 @@ impl Name for KafkaTaskExecutor {
 
 impl KafkaTaskExecutor {
     pub async fn topic(&self) -> crate::Result<String> {
-        self.meta()
-            .await
-            .ok_or(Error::Io(IoError::ArgNotFound("topic")))?
+        self.meta("topic")
+            .await?
             .as_str()
             .map(|topic| topic.to_owned())
             .ok_or(Error::Io(IoError::ArgNotFound("topic")))

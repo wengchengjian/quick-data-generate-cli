@@ -1,10 +1,10 @@
 use mysql_async::{from_row, prelude::*, Conn};
 use mysql_async::{Opts, Pool};
-use mysql_common::frunk::labelled::chars::I;
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicI64};
+use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 use std::vec;
 use tokio::sync::{mpsc, Mutex, RwLock};
@@ -22,15 +22,24 @@ use crate::task::Task;
 use crate::Json;
 
 impl MysqlDataSource {
+    pub fn new(schema: DataSourceSchema, id: &str) -> Self {
+        Self {
+            id: id.to_owned(),
+            name: schema.name,
+            pool_cache: HashMap::new(),
+            sources: schema.sources.unwrap_or(vec![]),
+        }
+    }
+
     pub async fn connect(&mut self) -> Result<Pool> {
         //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
             "mysql://{}:{}@{}:{}/{}?&compression=fast&stmt_cache_size=256",
-            self.meta().await?["user"].as_str().unwrap(),
-            self.meta().await?["password"].as_str().unwrap(),
-            self.meta().await?["host"].as_str().unwrap(),
-            self.meta().await?["port"].as_str().unwrap(),
-            self.meta().await?["database"].as_str().unwrap(),
+            self.meta("user").await?.as_str().unwrap(),
+            self.meta("password").await?.as_str().unwrap(),
+            self.meta("host").await?.as_str().unwrap_or("localhost"),
+            self.meta("port").await?.as_u64().unwrap_or(3306),
+            self.meta("database").await?.as_str().unwrap(),
         );
 
         let pool = self.pool_cache.entry(url.clone()).or_insert_with(|| {
@@ -87,7 +96,7 @@ impl MysqlDataSource {
     }
 
     #[deprecated(since = "0.1.0", note = "Please use the parse schema function instead")]
-    pub(crate) fn from_cli(cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
+    pub(crate) fn from_cli(_cli: Cli) -> Result<Box<dyn DataSourceChannel>> {
         let res = MysqlDataSource {
             id: Uuid::new_v4().to_string(),
             name: "mysql".into(),
@@ -224,21 +233,28 @@ impl super::DataSourceChannel for MysqlDataSource {
         }
         Ok(())
     }
-    async fn get_columns_define(&mut self) -> Option<Vec<DataSourceColumn>> {
+    async fn get_columns_define(&mut self) -> crate::Result<Vec<DataSourceColumn>> {
         // 获取连接池
-        let pool = self.connect().await.expect("获取mysql连接失败!");
+        let pool = self.connect().await?;
 
-        let conn = pool.get_conn().await.expect("获取mysql连接失败!");
+        let conn = pool.get_conn().await?;
         // 获取字段定义
         let columns = MysqlDataSource::get_columns_define(
             conn,
-            self.meta().await.unwrap()["database"].as_str().unwrap(),
-            self.meta().await.unwrap()["table"].as_str().unwrap(),
+            self.meta("database")
+                .await
+                .expect("database参数为空!")
+                .as_str()
+                .unwrap(),
+            self.meta("table")
+                .await
+                .expect("table参数为空!")
+                .as_str()
+                .unwrap(),
         )
-        .await
-        .expect("获取字段定义失败");
+        .await?;
 
-        return Some(columns);
+        return Ok(columns);
     }
 
     async fn get_task(
@@ -303,7 +319,7 @@ pub struct MysqlDataSource {
 impl TryFrom<Cli> for Box<MysqlDataSource> {
     type Error = Box<dyn std::error::Error>;
 
-    fn try_from(value: Cli) -> std::result::Result<Self, Self::Error> {
+    fn try_from(_value: Cli) -> std::result::Result<Self, Self::Error> {
         let res = MysqlDataSource {
             id: Uuid::new_v4().to_string(),
             name: "mysql".into(),

@@ -15,6 +15,7 @@ use crate::core::error::{Error, IoError, Result};
 use crate::core::limit::token::TokenBuketLimiter;
 use crate::core::shutdown::Shutdown;
 use crate::core::traits::{Name, TaskDetailStatic};
+use crate::datasource::DATA_SOURCE_MANAGER;
 use crate::model::column::{DataSourceColumn, DataTypeEnum};
 use crate::model::schema::{ChannelSchema, DataSourceSchema};
 use crate::task::mysql::MysqlTask;
@@ -34,11 +35,19 @@ impl MysqlDataSource {
     pub async fn connect(&mut self) -> Result<Pool> {
         //        let url = "mysql://root:wcj520600@localhost:3306/tests";
         let url = format!(
-            "mysql://{}:{}@{}:{}/{}?&compression=fast&stmt_cache_size=256",
+            "mysql://{}:{}@{}:{}/{}?&compression=fast&stmt_cache_size=256&conn_ttl=60",
             self.meta("user").await?.as_str().unwrap(),
             self.meta("password").await?.as_str().unwrap(),
-            self.meta("host").await?.as_str().unwrap_or("localhost"),
-            self.meta("port").await?.as_u64().unwrap_or(3306),
+            self.meta("host")
+                .await
+                .unwrap_or(json!("localhost"))
+                .as_str()
+                .unwrap_or("localhost"),
+            self.meta("port")
+                .await
+                .unwrap_or(json!(3306))
+                .as_u64()
+                .unwrap_or(3306),
             self.meta("database").await?.as_str().unwrap(),
         );
 
@@ -229,7 +238,34 @@ impl super::DataSourceChannel for MysqlDataSource {
             //更新状态
             self.update_final_status(DataSourceChannelStatus::Ended, false)
                 .await;
-            println!("{} Ended", self.id());
+            //拿到对应的source
+            if let Some(flag) = self.is_producer().await {
+                if !flag {
+                    let session = DATA_SOURCE_MANAGER
+                        .read()
+                        .await
+                        .sessions
+                        .get(self.id())
+                        .cloned();
+
+                    if let Some(session) = session {
+                        if let Some(sources) = session.consumer_sources.get(self.name()) {
+                            for source in sources {
+                                DATA_SOURCE_MANAGER
+                                    .write()
+                                    .await
+                                    .update_will_status(
+                                        self.id(),
+                                        source,
+                                        DataSourceChannelStatus::Ended,
+                                    )
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            }
+            println!("{} Ended", self.name());
         }
         Ok(())
     }
@@ -264,9 +300,9 @@ impl super::DataSourceChannel for MysqlDataSource {
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
-    ) -> Option<Box<dyn Task>> {
+    ) -> crate::Result<Option<Box<dyn Task>>> {
         // 获取连接池
-        let pool = self.connect().await.expect("获取mysql连接失败!");
+        let pool = self.connect().await?;
 
         let task = MysqlTask::from_args(
             self.id(),
@@ -278,7 +314,7 @@ impl super::DataSourceChannel for MysqlDataSource {
             count_rc,
             channel,
         );
-        return Some(Box::new(task));
+        return Ok(Some(Box::new(task)));
     }
 }
 

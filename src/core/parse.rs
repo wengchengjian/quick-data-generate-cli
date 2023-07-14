@@ -160,6 +160,12 @@ pub async fn parse_mpsc_from_schema(
         parse_datasource_from_schema(schema.clone(), &session_id).await?;
     merge_schema_to_session(&session_id, &schema).await?;
 
+    DATA_SOURCE_MANAGER.write().await.put_session_source(
+        &session_id,
+        schema.name.clone(),
+        sources.clone(),
+    );
+
     let data_source_channel = MpscDataSourceChannel::new(producer, consumer);
 
     return Ok(Box::new(data_source_channel));

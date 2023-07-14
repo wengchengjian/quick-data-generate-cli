@@ -20,6 +20,16 @@ pub trait Name {
 /// 用于实现一些公共方法
 #[async_trait]
 pub trait TaskDetailStatic: Name {
+    async fn is_producer(&self) -> Option<bool> {
+        let session = DATA_SOURCE_MANAGER
+            .read()
+            .await
+            .sessions
+            .get(self.id())?
+            .clone();
+        return Some(!session.consumer_sources.get(self.name()).is_some());
+    }
+
     async fn is_shutdown(&self) -> bool {
         DATA_SOURCE_MANAGER
             .read()
@@ -54,7 +64,7 @@ pub trait TaskDetailStatic: Name {
                 return channel.batch.unwrap_or(DEFAULT_BATCH_SIZE);
             }
         }
-        0
+        DEFAULT_BATCH_SIZE
     }
 
     async fn count_inner(&self) -> Option<isize> {
@@ -81,7 +91,7 @@ pub trait TaskDetailStatic: Name {
                 return channel.concurrency.unwrap_or(MIN_THREAD_SIZE);
             }
         }
-        0
+        MIN_THREAD_SIZE
     }
 
     async fn session(&self) -> Option<DataSourceTransferSession> {

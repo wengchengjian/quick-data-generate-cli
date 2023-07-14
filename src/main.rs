@@ -96,11 +96,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
             println!("\nreceived stop signal, exiting...");
         }
     }
-    let context = context.read().await;
-    let schema = Schema::new(Some(5), DATA_SOURCE_MANAGER.read().await.get_all_schema());
+    // let context = context.read().await;
+    // let schema = Schema::new(Some(5), DATA_SOURCE_MANAGER.read().await.get_all_schema());
     //输出schema,以便修正或重复利用
-    let path = output_schema_to_dir(&context.id, &schema).await;
-    println!("schema文件输出至: {:?}", path);
+    // let path = output_schema_to_dir(&context.id, &schema).await;
+    // println!("schema文件输出至: {:?}", path);
     if !done {
         {
             // 关闭所有任务

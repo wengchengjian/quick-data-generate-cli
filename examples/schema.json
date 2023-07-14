@@ -4,11 +4,14 @@
             "name":"mysql-output2",
             "source": "Mysql",
             "meta": {
-                "host": "192.168.180.213",
+                "host": "192.168.180.217",
                 "database": "tests",
-                "table": "BFC_TSA_PACKET_INFO",
+                "table": "bfc_model_task",
                 "user": "root",
                 "password": "bfcdb@123"
+            },
+            "channel": {
+                "count": 5000
             }
         }
     ],

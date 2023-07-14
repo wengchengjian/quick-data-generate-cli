@@ -65,7 +65,7 @@ impl super::DataSourceChannel for FakeDataSource {
         shutdown: Shutdown,
         _count_rc: Option<Arc<AtomicI64>>,
         _limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
-    ) -> Option<Box<dyn Task>> {
+    ) -> crate::Result<Option<Box<dyn Task>>> {
         let task = FakeTask::from_args(
             self.id(),
             self.name(),
@@ -73,7 +73,7 @@ impl super::DataSourceChannel for FakeDataSource {
             shutdown,
             channel,
         );
-        return Some(Box::new(task));
+        return Ok(Some(Box::new(task)));
     }
 }
 

@@ -192,15 +192,21 @@ pub struct DataSourceStatistics {
 /// sessionId 检索session, 同一个namespace下的channel sessionId相同
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DataSourceTransferSession {
+    /// 会话id
     pub id: String,
-
+    /// 会话元数据
     pub meta: Option<Json>,
-
+    /// 会话字段定义
     pub columns: Option<(Json, Vec<DataSourceColumn>)>,
 
+    /// 最终状态 name -> status
     pub final_status: HashMap<String, DataSourceChannelStatus>,
 
+    /// 将要变更的状态 name -> status
     pub will_status: HashMap<String, DataSourceChannelStatus>,
+
+    /// 消费者消费的数据源 name -> vec<name>
+    pub consumer_sources: HashMap<String, Vec<String>>,
 }
 
 impl DataSourceTransferSession {
@@ -215,6 +221,7 @@ impl DataSourceTransferSession {
             columns,
             final_status: HashMap::new(),
             will_status: HashMap::new(),
+            consumer_sources: HashMap::new(),
         }
     }
 }
@@ -253,6 +260,12 @@ impl DataSourceManager {
 
     pub fn pool(&self) -> Option<&Pool<Sqlite>> {
         return self.pool.as_ref();
+    }
+
+    pub fn put_session_source(&mut self, id: &str, name: String, sources: Vec<String>) {
+        if let Some(session) = self.sessions.get_mut(id) {
+            session.consumer_sources.insert(name, sources);
+        }
     }
 
     pub fn get_all_schema(&self) -> Vec<DataSourceSchema> {
@@ -624,10 +637,6 @@ impl DelegatedDataSource {
 
 #[async_trait]
 pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name {
-    fn is_producer(&self) -> bool {
-        return false;
-    }
-
     fn need_log(&self) -> bool {
         return true;
     }
@@ -659,7 +668,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
 
             if let Some(schema) = schema {
                 // 获取字段定义
-                let columns = self.get_columns_define().await.unwrap_or(vec![]);
+                let columns = self.get_columns_define().await?;
                 if schema.columns.is_some() || columns.len() > 0 {
                     let schema_columns = DataSourceColumn::get_columns_from_value(
                         &schema.columns.unwrap_or(json!({})),
@@ -703,10 +712,38 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
         _channel: ChannelContext,
     ) -> crate::Result<()> {
         if self.need_log() {
-            //更新状态
+            //更新自己的状态
             self.update_final_status(DataSourceChannelStatus::Ended, false)
                 .await;
-            println!("{} Ended", self.id());
+
+            //拿到对应的source
+            if let Some(flag) = self.is_producer().await {
+                if !flag {
+                    let session = DATA_SOURCE_MANAGER
+                        .read()
+                        .await
+                        .sessions
+                        .get(self.id())
+                        .cloned();
+
+                    if let Some(session) = session {
+                        if let Some(sources) = session.consumer_sources.get(self.name()) {
+                            for source in sources {
+                                DATA_SOURCE_MANAGER
+                                    .write()
+                                    .await
+                                    .update_will_status(
+                                        self.id(),
+                                        source,
+                                        DataSourceChannelStatus::Ended,
+                                    )
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            }
+            println!("{} Ended", self.name());
         }
         Ok(())
     }
@@ -777,8 +814,8 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
         _shutdown: Shutdown,
         _count_rc: Option<Arc<AtomicI64>>,
         _limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
-    ) -> Option<Box<dyn Task>> {
-        return None;
+    ) -> crate::Result<Option<Box<dyn Task>>> {
+        return Ok(None);
     }
 
     ///执行流程
@@ -836,7 +873,7 @@ pub trait DataSourceChannel: Send + Sync + fmt::Debug + TaskDetailStatic + Name 
                     count_rc,
                     limiter,
                 )
-                .await;
+                .await?;
 
             match task {
                 Some(mut task) => {

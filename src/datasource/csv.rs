@@ -164,7 +164,7 @@ impl super::DataSourceChannel for CsvDataSource {
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
-    ) -> Option<Box<dyn Task>> {
+    ) -> crate::Result<Option<Box<dyn Task>>> {
         let task = CsvTask::from_args(
             self.id(),
             self.name(),
@@ -173,7 +173,7 @@ impl super::DataSourceChannel for CsvDataSource {
             limiter,
             count_rc,
         );
-        return Some(Box::new(task));
+        return Ok(Some(Box::new(task)));
     }
 }
 

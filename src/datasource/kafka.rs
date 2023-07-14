@@ -225,25 +225,19 @@ impl DataSourceChannel for KafkaDataSource {
         shutdown: Shutdown,
         count_rc: Option<Arc<AtomicI64>>,
         limiter: Option<Arc<Mutex<TokenBuketLimiter>>>,
-    ) -> Option<Box<dyn Task>> {
+    ) -> crate::Result<Option<Box<dyn Task>>> {
         // 获取生产者
-        match self.get_provider().await {
-            Ok(producer) => {
-                let task = KafkaTask::from_args(
-                    self.id(),
-                    self.name(),
-                    producer,
-                    shutdown_complete_tx,
-                    shutdown,
-                    count_rc,
-                    limiter,
-                );
-                return Some(Box::new(task));
-            }
-            Err(_) => {
-                return None;
-            }
-        }
+        let producer = self.get_provider().await?;
+        let task = KafkaTask::from_args(
+            self.id(),
+            self.name(),
+            producer,
+            shutdown_complete_tx,
+            shutdown,
+            count_rc,
+            limiter,
+        );
+        return Ok(Some(Box::new(task)));
     }
 }
 

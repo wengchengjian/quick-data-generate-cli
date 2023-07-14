@@ -35,6 +35,7 @@ rdkafka = { version = "0.32.2", features = ["cmake-build"] }
 winapi = {version = "0.3.9", features=["winuser","minwindef"]}
 sea-query = {version = "0.28.5"}
 home = "0.5.5"
+tauri = { version = "1.4.1" }
 dashmap = "5.4.0"
 bit-vec = "0.6.3"
 bloom = "0.3.2"
@@ -61,7 +62,7 @@ debug-assertions = false
 panic = "abort"
 
 [workspace]
-members = ["ckd-cli","ckd-web","ckd-ui", "ckd-core"]
+members = ["ckd-cli","ckd-web", "ckd-core", "ckd-ui/src-tauri"]
 exclude = ["submodule/mysql_async", "submodule/rust_mysql_common"]
 
 [[bin]]
@@ -74,8 +75,4 @@ bench = false
 path = "ckd-web/src/main.rs"
 name = "ckd-web"
 
-[[bin]]
-bench = false
-path = "ckd-ui/src/main.rs"
-name = "ckd-ui"
 

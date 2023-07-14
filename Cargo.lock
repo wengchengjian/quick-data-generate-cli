@@ -448,6 +448,7 @@ dependencies = [
  "bytes",
  "cc",
  "chrono",
+ "ckd-core",
  "clickhouse",
  "criterion",
  "dashmap",
@@ -476,6 +477,71 @@ dependencies = [
  "uuid",
  "winapi",
 ]
+
+[[package]]
+name = "ckd-cli"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "ckd-core",
+ "home",
+ "lazy_static",
+ "mysql_common",
+ "regex",
+ "serde",
+ "serde_json",
+ "structopt",
+ "time 0.3.21",
+ "tokio",
+]
+
+[[package]]
+name = "ckd-core"
+version = "0.1.0"
+dependencies = [
+ "async-recursion",
+ "async-trait",
+ "bit-vec 0.6.3",
+ "bloom",
+ "bytes",
+ "cc",
+ "chrono",
+ "clickhouse",
+ "criterion",
+ "dashmap",
+ "effective-limits",
+ "fake",
+ "futures",
+ "home",
+ "lazy_static",
+ "mysql_async",
+ "mysql_common",
+ "num_cpus",
+ "openssl",
+ "pretty_assertions",
+ "rand",
+ "rdkafka",
+ "regex",
+ "sea-query",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "structopt",
+ "thiserror",
+ "time 0.3.21",
+ "tokio",
+ "tokio-test",
+ "uuid",
+ "winapi",
+]
+
+[[package]]
+name = "ckd-ui"
+version = "0.1.0"
+
+[[package]]
+name = "ckd-web"
+version = "0.1.0"
 
 [[package]]
 name = "clang-sys"

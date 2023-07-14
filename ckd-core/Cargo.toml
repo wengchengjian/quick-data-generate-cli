@@ -1,12 +1,9 @@
 [package]
-name = "ckd"
-version = "0.1.0"  #:version
-authors = ["Chengjian Weng <473991883@qq.com>"]
-description = """
-CKD aims to provide convenient data transfer and testing tools
-"""
-license = "Unlicense OR MIT"
+name = "ckd-core"
+version = "0.1.0"
 edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clickhouse = "0.11.4"
@@ -24,10 +21,8 @@ effective-limits = "0.5.5"
 structopt = "0.3"
 async-trait = "0.1.68"
 serde_json = "1.0.96"
-ckd-core = { version= "0.1.0", path = "./ckd-core"}
-
-mysql_async = { path="./submodule/mysql_async" }
-mysql_common = { path="./submodule/rust_mysql_common" }
+mysql_async = { path="../submodule/mysql_async" }
+mysql_common = { path="../submodule/rust_mysql_common" }
 futures = "0.3.28"
 regex = "1.8.4"
 thiserror = "1.0.40"
@@ -51,31 +46,3 @@ pretty_assertions = "1"
 
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel"] }
-
-[profile.release]
-opt-level = 3
-debug = false
-rpath = false
-lto = true
-debug-assertions = false
-panic = "abort"
-
-[workspace]
-members = ["ckd-cli","ckd-web","ckd-ui", "ckd-core"]
-exclude = ["submodule/mysql_async", "submodule/rust_mysql_common"]
-
-[[bin]]
-bench = false
-path = "ckd-cli/src/main.rs"
-name = "ckd-cli"
-
-[[bin]]
-bench = false
-path = "ckd-web/src/main.rs"
-name = "ckd-web"
-
-[[bin]]
-bench = false
-path = "ckd-ui/src/main.rs"
-name = "ckd-ui"
-

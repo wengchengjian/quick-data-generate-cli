@@ -4,6 +4,7 @@ use ckd_core::datasource::kafka::KafkaArgs;
 use ckd_core::datasource::mysql::MysqlArgs;
 use ckd_core::datasource::{DataSourceChannel, DataSourceContext, DataSourceEnum};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::{create_context, Json};
 use ckd_core::core::error::{Error, IoError};
@@ -158,16 +159,21 @@ pub fn parse_meta_from_cli(source: &DataSourceEnum, cli: Cli) -> ckd_core::Resul
         }
     }
 }
+use tokio::sync::Mutex;
 
 /// 返回解析后的输出源，interval，concurrency, 以cli为准
 pub async fn parse_datasource(
     cli: Cli,
-) -> Result<(Vec<Box<dyn DataSourceChannel>>, usize, DataSourceContext)> {
+) -> Result<(
+    Vec<Arc<Mutex<Box<dyn DataSourceChannel>>>>,
+    usize,
+    DataSourceContext,
+)> {
     let mut cli = cli;
     let mut datasources = vec![];
     let interval = cli.interval;
 
-    let _ = cli.schema.insert(PathBuf::from("examples/schema.json"));
+    //    let _ = cli.schema.insert(PathBuf::from("examples/schema.json"));
 
     if let Some(schema_path) = &cli.schema {
         let schema = parse_schema(schema_path).unwrap();
@@ -203,7 +209,7 @@ pub async fn parse_datasource(
 pub async fn parse_datasource_from_cli(
     cli: Cli,
     force: bool,
-) -> Result<Option<Vec<Box<dyn DataSourceChannel>>>> {
+) -> Result<Option<Vec<Arc<Mutex<Box<dyn DataSourceChannel>>>>>> {
     match parse_schema_from_cli(cli) {
         Ok(schema) => {
             let channel = parse_datasources_from_schema(schema).await?;

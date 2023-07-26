@@ -23,6 +23,25 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![greet])
         .invoke_handler(tauri::generate_handler![close_splashscreen])
+        .on_window_event(|event| match event.event() {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                //阻止默认关闭
+                api.prevent_close();
+
+                let window = event.window().clone();
+                tauri::api::dialog::confirm(
+                    Some(&event.window()),
+                    "关闭应用",
+                    "确定关闭当前应用?",
+                    move |answer| {
+                        if answer {
+                            let _ = window.close();
+                        }
+                    },
+                )
+            }
+            _ => {}
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

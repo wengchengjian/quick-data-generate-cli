@@ -1,5 +1,6 @@
 use regex::Regex;
 use serde_json::json;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::error::{Error, IoError};
@@ -15,6 +16,7 @@ use crate::model::{
 use chrono::{DateTime, NaiveDateTime};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 
 use crate::{impl_func_is_primitive_by_parse, Json};
@@ -119,7 +121,7 @@ pub async fn merge_schema_to_session(
 pub async fn parse_mpsc_from_schema(
     schema: &DataSourceSchema,
     source_map: HashMap<&str, DataSourceSchema>,
-) -> crate::Result<Box<dyn DataSourceChannel>> {
+) -> crate::Result<Arc<Mutex<Box<dyn DataSourceChannel>>>> {
     let session_id = create_seession_id();
 
     let mut source_map = source_map;
@@ -167,7 +169,7 @@ pub async fn parse_mpsc_from_schema(
 
     let data_source_channel = MpscDataSourceChannel::new(producer, consumer);
 
-    return Ok(Box::new(data_source_channel));
+    return Ok(Arc::new(Mutex::new(Box::new(data_source_channel))));
 }
 
 pub async fn parse_datasource_from_schema(
@@ -244,7 +246,7 @@ pub fn merge_datasource_schema_args(
 
 pub async fn parse_datasources_from_schema(
     schema: Schema,
-) -> crate::Result<Vec<Box<dyn DataSourceChannel>>> {
+) -> crate::Result<Vec<Arc<Mutex<Box<dyn DataSourceChannel>>>>> {
     let mut outputs = vec![];
 
     let sources = &schema.sources;

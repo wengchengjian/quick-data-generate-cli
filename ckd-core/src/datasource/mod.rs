@@ -112,7 +112,7 @@ impl DataSourceContext {
 #[derive(Debug)]
 pub struct DelegatedDataSource {
     id: String,
-    datasources: Vec<Box<dyn DataSourceChannel>>,
+    datasources: Vec<Arc<Mutex<Box<dyn DataSourceChannel>>>>,
     name: String,
 }
 
@@ -374,9 +374,18 @@ impl DataSourceManager {
 
     pub fn is_shutdown(&self, session_id: &str, name: &str) -> bool {
         match self.sessions.get(session_id) {
-            Some(session) => match session.will_status.get(name) {
+            Some(session) => match session.final_status.get(name) {
                 Some(status) => {
-                    return Self::is_shutdown_self(status);
+                    if !Self::is_shutdown_self(status) {
+                        match session.will_status.get(name) {
+                            Some(status) => {
+                                return Self::is_shutdown_self(status);
+                            }
+                            None => return false,
+                        }
+                    } else {
+                        return true;
+                    }
                 }
                 None => return false,
             },
@@ -569,7 +578,12 @@ impl DataSourceChannel for DelegatedDataSource {
         for datasource in datasources {
             let context = context.clone();
             let channel = channel.clone();
-            datasource.execute(context, channel).await?;
+            let datasource_rc = datasource.clone();
+            tokio::spawn(async move {
+                if let Err(e) = datasource_rc.lock().await.execute(context, channel).await {
+                    println!("{}", e);
+                }
+            });
         }
         Ok(())
     }
@@ -588,7 +602,7 @@ use crate::Json;
 use uuid::Uuid;
 
 impl DelegatedDataSource {
-    pub fn new(datasources: Vec<Box<dyn DataSourceChannel>>) -> Self {
+    pub fn new(datasources: Vec<Arc<Mutex<Box<dyn DataSourceChannel>>>>) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             datasources,

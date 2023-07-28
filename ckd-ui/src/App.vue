@@ -2,62 +2,39 @@
 // 导入 invoke 方法
 import {invoke} from '@tauri-apps/api/tauri'
 import {ElConfigProvider} from 'element-plus'
-
-import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
+import CustomMenuList from './components/MenuList.vue'
 
 import {
     ref,
     computed,
-    reactive
+    reactive,
+onMounted,
+onBeforeMount
 } from "vue";
+import {menus} from "./route/menu"
 
-const count = ref(0);
 
-const author = reactive({
-    name: 'John Doe',
-    books: [
-        'Vue 2 - Advanced Guide',
-        'Vue 3 - Basic Guide',
-        'Vue 4 - The Mystery'
-    ]
-})
 
-function increment() {
-    count.value++
-}
 
-const publishedBooksMessage = computed(() => {
-    return author.books.length > 0 ? 'Yes' : 'No';
-});
-
-// 添加监听函数，监听 DOM 内容加载完成事件
-document.addEventListener('DOMContentLoaded', () => {
-    // DOM 内容加载完成之后，通过 invoke 调用 在 Rust 中已经注册的命令
+onMounted(() => {
+    // DOM 内容加载完成之后，关闭 splashscreen
     setTimeout(() => invoke('close_splashscreen'), 2000)
 })
+
+
 
 </script>
 
 <template>
-    <el-config-provider :locale="zhCn">
-        <div class="container">
-            <h1>Welcome to Tauri!</h1>
+   <el-row class="tac">
+    <el-col :span="4">
+      <CustomMenuList :menus="menus"></CustomMenuList>
+    </el-col>
+    <el-col :span="18">
+        <router-view></router-view>
+    </el-col>
+  </el-row>
 
-
-            <p>Click on the Tauri, Vite, and Vue logos to learn more.</p>
-
-
-            <button @click="increment">
-                {{ count }}
-            </button>
-
-            <p>Has published books:</p>
-            <span>{{ publishedBooksMessage }}</span>
-            <router-link to="/">Go to Home</router-link>
-            <router-link to="/settings">Go to Settings</router-link>
-        </div>
-
-    </el-config-provider>
 </template>
 
 <style scoped>

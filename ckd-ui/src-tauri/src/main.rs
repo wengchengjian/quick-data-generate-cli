@@ -21,7 +21,6 @@ fn close_splashscreen(window: tauri::Window) {
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet])
         .invoke_handler(tauri::generate_handler![close_splashscreen])
         .on_window_event(|event| match event.event() {
             tauri::WindowEvent::CloseRequested { api, .. } => {

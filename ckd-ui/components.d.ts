@@ -7,10 +7,22 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    Dashboard: typeof import('./src/components/dashboard.vue')['default']
     Datasource: typeof import('./src/components/datasource.vue')['default']
+    ElCol: typeof import('element-plus/es')['ElCol']
+    ElIcon: typeof import('element-plus/es')['ElIcon']
+    ElMenu: typeof import('element-plus/es')['ElMenu']
+    ElMenuItem: typeof import('element-plus/es')['ElMenuItem']
+    ElMenuItemGroup: typeof import('element-plus/es')['ElMenuItemGroup']
+    ElRow: typeof import('element-plus/es')['ElRow']
+    ElSubMenu: typeof import('element-plus/es')['ElSubMenu']
     Greet: typeof import('./src/components/Greet.vue')['default']
+    MenuItem: typeof import('./src/components/menuItem.vue')['default']
+    MenuList: typeof import('./src/components/MenuList.vue')['default']
+    NotFound: typeof import('./src/components/notFound.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Settings: typeof import('./src/components/settings.vue')['default']
+    StaticsLog: typeof import('./src/components/StaticsLog.vue')['default']
   }
 }

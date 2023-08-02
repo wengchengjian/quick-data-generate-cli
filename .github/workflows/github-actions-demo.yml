@@ -16,8 +16,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: dowonload
-      run: apt install -y libgtk-3-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
